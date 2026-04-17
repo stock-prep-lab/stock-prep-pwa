@@ -54,6 +54,25 @@
 - Vercel Cron
 - GitHub Actions
 
+## 開発環境
+
+この repository は pnpm workspace のモノレポとして構成する。
+Node.js は Vite のサポート範囲に合わせて 20 系または 22 以上を利用する。
+
+```sh
+corepack enable
+pnpm install
+pnpm dev
+```
+
+品質確認は以下を基本とする。
+
+```sh
+pnpm lint
+pnpm typecheck
+pnpm build
+```
+
 ## repository 構成
 
 - `apps/web`: PWA 本体
