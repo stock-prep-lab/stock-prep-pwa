@@ -13,7 +13,8 @@
     "@stock-prep/domain": "workspace:*",
     "@stock-prep/shared": "workspace:*",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.14.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
