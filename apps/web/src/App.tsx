@@ -8,6 +8,7 @@ import { PortfolioPage } from "./pages/PortfolioPage";
 import { RebalancePage } from "./pages/RebalancePage";
 import { ScreeningPage } from "./pages/ScreeningPage";
 import { SearchPage } from "./pages/SearchPage";
+import { SimulationPage } from "./pages/SimulationPage";
 import { StockDetailPage } from "./pages/StockDetailPage";
 
 type AppRoute = {
@@ -135,6 +136,8 @@ function AppShell() {
                   <HoldingFormPage />
                 ) : route.id === "rebalance" ? (
                   <RebalancePage />
+                ) : route.id === "simulation" ? (
+                  <SimulationPage />
                 ) : (
                   <PlaceholderPage route={route} />
                 )
