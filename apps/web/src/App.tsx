@@ -5,6 +5,7 @@ import { APP_NAME } from "@stock-prep/shared";
 import { HoldingFormPage } from "./pages/HoldingFormPage";
 import { HomePage } from "./pages/HomePage";
 import { PortfolioPage } from "./pages/PortfolioPage";
+import { RebalancePage } from "./pages/RebalancePage";
 import { ScreeningPage } from "./pages/ScreeningPage";
 import { SearchPage } from "./pages/SearchPage";
 import { StockDetailPage } from "./pages/StockDetailPage";
@@ -132,6 +133,8 @@ function AppShell() {
                   <StockDetailPage />
                 ) : route.id === "holding-form" ? (
                   <HoldingFormPage />
+                ) : route.id === "rebalance" ? (
+                  <RebalancePage />
                 ) : (
                   <PlaceholderPage route={route} />
                 )
