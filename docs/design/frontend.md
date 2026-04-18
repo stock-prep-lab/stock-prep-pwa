@@ -7,6 +7,7 @@
 - ScreeningPage
 - PortfolioPage
 - StockDetailPage
+- HoldingFormPage
 - RebalancePage
 - SimulationPage
 
@@ -16,6 +17,7 @@
 - stock-detail
 - screening
 - portfolio
+- holdings
 - rebalance
 - simulation
 - notifications
@@ -61,6 +63,8 @@ Store 例:
 - 1画面1目的を崩さない
 - 最重要操作は下部固定ボタンを優先する
 - 下タブは 4 つまでに抑える
+- 保有登録 / 編集は下タブに増やさず、銘柄詳細とポートフォリオから遷移する
+- 市場選択は検索や保有登録で使うが、主要下タブは増やさない
 
 ## 画面確認基準
 
