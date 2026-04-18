@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Navigate, NavLink, Route, Routes } from "react-rou
 import { APP_NAME } from "@stock-prep/shared";
 
 import { HomePage } from "./pages/HomePage";
+import { SearchPage } from "./pages/SearchPage";
 
 type AppRoute = {
   id: string;
@@ -106,7 +107,15 @@ function AppShell() {
           {allRoutes.map((route) => (
             <Route
               key={route.path}
-              element={route.id === "home" ? <HomePage /> : <PlaceholderPage route={route} />}
+              element={
+                route.id === "home" ? (
+                  <HomePage />
+                ) : route.id === "search" ? (
+                  <SearchPage />
+                ) : (
+                  <PlaceholderPage route={route} />
+                )
+              }
               path={route.path}
             />
           ))}
