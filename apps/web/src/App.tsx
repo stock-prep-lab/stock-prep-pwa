@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Navigate, NavLink, Route, Routes } from "react-rou
 import { APP_NAME } from "@stock-prep/shared";
 
 import { HomePage } from "./pages/HomePage";
+import { ScreeningPage } from "./pages/ScreeningPage";
 import { SearchPage } from "./pages/SearchPage";
 
 type AppRoute = {
@@ -112,6 +113,8 @@ function AppShell() {
                   <HomePage />
                 ) : route.id === "search" ? (
                   <SearchPage />
+                ) : route.id === "screening" ? (
+                  <ScreeningPage />
                 ) : (
                   <PlaceholderPage route={route} />
                 )
