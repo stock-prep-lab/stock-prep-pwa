@@ -10,6 +10,8 @@
 - 崩れがないとは、主要情報が欠けず、主要操作が隠れず、不要な横スクロール前提にならない状態を指す
 - E2E 対象 Slice では、主要導線の E2E テストを追加または更新する
 - E2E は画面骨組みが固まる前には無理に追加せず、実データや主要導線が成立した段階で導入する
+- レスポンシブ対応だけでは PWA 対応とみなさない
+- PWA としての Manifest / Service Worker / installable 対応は Slice 14 で扱う
 
 ---
 
@@ -358,7 +360,42 @@
 
 ---
 
-## Slice 14: Push 購読
+## Slice 14: PWA 最小基盤
+
+### 対象
+- Web App Manifest
+- アプリアイコン
+- `theme_color` / `background_color`
+- `display: standalone`
+- Service Worker 登録
+- 最小限の app shell / assets cache
+- オフライン時の最低限の fallback
+
+### 非対象
+- Push 通知
+- IndexedDB 同期
+- 外部データ取得
+- バックグラウンド同期
+- 日次データのオフライン完全対応
+
+### 完了条件
+- アプリとしてインストール可能な構成になっている
+- 初回読み込み後、基本 shell がキャッシュされる
+- オフライン時に最低限の fallback が表示される
+- モバイル幅とデスクトップ幅で起動表示が破綻しない
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm build`
+- Manifest が取得できる
+- Service Worker が登録される
+- オフライン時の fallback 確認
+- モバイル幅 / デスクトップ幅で起動確認
+
+---
+
+## Slice 15: Push 購読
 
 ### 対象
 - 通知許可導線
@@ -380,7 +417,7 @@
 
 ---
 
-## Slice 15: Vercel Functions
+## Slice 16: Vercel Functions
 
 ### 対象
 - 購読登録
@@ -401,7 +438,7 @@
 
 ---
 
-## Slice 16: Vercel Cron
+## Slice 17: Vercel Cron
 
 ### 対象
 - 定期更新処理
@@ -422,7 +459,7 @@
 
 ---
 
-## Slice 17: 通知送信
+## Slice 18: 通知送信
 
 ### 対象
 - 日次更新通知
@@ -443,7 +480,7 @@
 
 ---
 
-## Slice 18: 仕上げと QA
+## Slice 19: 仕上げと QA
 
 ### 対象
 - UI 微調整
@@ -470,4 +507,3 @@
   - 検索 → 銘柄詳細
   - スクリーニング → 銘柄詳細
   - ポートフォリオ → リバランス提案 → 購入シミュレーション
-  
