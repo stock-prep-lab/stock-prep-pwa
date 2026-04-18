@@ -256,6 +256,8 @@ export function PortfolioPage() {
 
       <section className="flex flex-col gap-4" aria-labelledby="holdings-heading">
         <SectionHeader
+          actionLabel="保有を追加"
+          actionTo="/holdings/7203/edit"
           description="保有銘柄ごとの数量、評価額、損益を確認します。"
           title="保有一覧"
           titleId="holdings-heading"
@@ -304,20 +306,34 @@ export function PortfolioPage() {
 }
 
 function SectionHeader({
+  actionLabel,
+  actionTo,
   description,
   title,
   titleId,
 }: {
+  actionLabel?: string;
+  actionTo?: string;
   description: string;
   title: string;
   titleId: string;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <h2 className="text-2xl font-semibold tracking-normal" id={titleId}>
-        {title}
-      </h2>
-      <p className="max-w-2xl text-sm leading-6 text-zinc-700">{description}</p>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-2xl font-semibold tracking-normal" id={titleId}>
+          {title}
+        </h2>
+        <p className="max-w-2xl text-sm leading-6 text-zinc-700">{description}</p>
+      </div>
+      {actionLabel && actionTo ? (
+        <Link
+          className="flex min-h-10 w-fit items-center rounded-md bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-teal-700"
+          to={actionTo}
+        >
+          {actionLabel}
+        </Link>
+      ) : null}
     </div>
   );
 }

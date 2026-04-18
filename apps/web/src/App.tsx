@@ -2,10 +2,12 @@ import { BrowserRouter, Link, Navigate, NavLink, Route, Routes } from "react-rou
 
 import { APP_NAME } from "@stock-prep/shared";
 
+import { HoldingFormPage } from "./pages/HoldingFormPage";
 import { HomePage } from "./pages/HomePage";
 import { PortfolioPage } from "./pages/PortfolioPage";
 import { ScreeningPage } from "./pages/ScreeningPage";
 import { SearchPage } from "./pages/SearchPage";
+import { StockDetailPage } from "./pages/StockDetailPage";
 
 type AppRoute = {
   id: string;
@@ -69,6 +71,14 @@ const secondaryRoutes = [
     description: "個別銘柄の情報を確認するための画面。",
   },
   {
+    id: "holding-form",
+    path: "/holdings/:symbolCode/edit",
+    href: "/holdings/7203/edit",
+    label: "保有登録 / 編集",
+    title: "保有登録 / 編集",
+    description: "保有株数と取得単価を登録するための画面。",
+  },
+  {
     id: "rebalance",
     path: "/rebalance",
     href: "/rebalance",
@@ -118,6 +128,10 @@ function AppShell() {
                   <ScreeningPage />
                 ) : route.id === "portfolio" ? (
                   <PortfolioPage />
+                ) : route.id === "stock-detail" ? (
+                  <StockDetailPage />
+                ) : route.id === "holding-form" ? (
+                  <HoldingFormPage />
                 ) : (
                   <PlaceholderPage route={route} />
                 )
