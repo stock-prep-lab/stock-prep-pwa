@@ -39,7 +39,9 @@
 ### 外部データ
 - Stooq CSV を第一候補にする
 - Stooq API key は Vercel 環境変数で管理する
+- Stooq CSV download endpoint には `apikey` parameter を付与する
 - 取得対象は日本株を主軸に、米国株、英国株、香港株も同じ日足取り込み基盤で扱う
+- 外貨建て保有の JPY 換算用に `USDJPY` / `GBPJPY` / `HKDJPY` の為替日次も扱う
 - 市場ごとの Stooq symbol は銘柄マスタで管理する
 - Stooq 側で取得できない銘柄は、未対応状態として保存する
 

@@ -35,6 +35,7 @@
 Store 例:
 - symbols
 - dailyPrices
+- exchangeRates
 - holdings
 - cash
 - screeningResults
@@ -65,6 +66,7 @@ Store 例:
 - 下タブは 4 つまでに抑える
 - 保有登録 / 編集は下タブに増やさず、銘柄詳細とポートフォリオから遷移する
 - 市場選択は検索や保有登録で使うが、主要下タブは増やさない
+- ポートフォリオは JPY を基準通貨にし、外貨建て保有は評価額の換算状態を表示する
 
 ## 画面確認基準
 
