@@ -20,6 +20,16 @@
 - Vercel Functions は API 実行基盤として使い、永続データは Vercel Functions 内ではなく DB / Storage に保存する
 - 保有情報をサーバー保存するには、ユーザー識別または個人利用向けの認証導線を別途用意する
 
+## MVP インフラ構成
+
+- MVP は Vercel Hobby と Supabase Free を第一候補にする
+- Vercel は PWA 配信、Functions、Cron の実行基盤として使う
+- Supabase は Auth、Postgres、必要に応じた Storage の候補として使う
+- Neon Postgres は、DB を軽量な Postgres に寄せたい場合の代替候補にする
+- AWS EC2 などの自前サーバー構築は MVP では前提にしない
+- 価格データ量や利用者数が無料枠を超えそうになったら、DB の有料プランまたは保存範囲の見直しを行う
+- Vercel Functions と DB は、接続先 DB に近い region を選ぶことを検討する
+
 ## repository 構成
 
 - `apps/web`: PWA 本体
@@ -52,7 +62,7 @@
 
 ### サーバー側保存先
 - 市場データ、銘柄マスタ、為替レート、保有情報はサーバー側の永続保存先を使う
-- DB 候補は Postgres 系のサービスや Supabase / Neon などを比較して決める
+- DB 候補は Supabase Postgres を第一候補、Neon Postgres を代替候補として比較して決める
 - 大きな bulk data の原本や中間ファイルは、必要に応じて object storage を検討する
 
 ### 外部データ
