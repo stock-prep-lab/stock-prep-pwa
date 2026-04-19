@@ -3,10 +3,19 @@
 ## 全体方針
 
 - フロントは PWA
-- データ保存は IndexedDB
+- 端末ごとのローカル保存は IndexedDB
 - 日次更新と通知は Vercel Functions / Cron
 - GitHub Actions は CI と品質担保
 - デプロイは Vercel の Git 連携を使う
+
+## データ保存の責務
+
+- IndexedDB は、PWA / Web を開いている端末ごとのローカル保存先として使う
+- Vercel Cron はユーザー端末の IndexedDB へ直接保存しない
+- Vercel Cron で取得した市場データは、サーバー側の保存先へ保存する
+- PWA / Web は起動時に最新データ配信 API から市場データを取得し、その端末の IndexedDB にキャッシュする
+- 同じ URL のアプリでも、Mac の Chrome、Mac の Safari、iPhone の PWA などの IndexedDB は別の保存領域として扱う
+- 保有情報を複数端末で同期する場合は、IndexedDB だけではなくサーバー側のユーザーデータ保存が別途必要になる
 
 ## repository 構成
 
