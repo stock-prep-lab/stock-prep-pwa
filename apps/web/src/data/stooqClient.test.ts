@@ -117,6 +117,17 @@ describe("stooqClient", () => {
     ).toThrow(StooqUnsupportedDataError);
   });
 
+  it("treats unexpected CSV columns as unsupported Stooq data", () => {
+    const mismatchedCsv = [
+      "Date,Close,Open,High,Low,Volume",
+      "2026-04-17,3218,3138,3240,3112,28430000",
+    ].join("\n");
+
+    expect(() => parseStooqDailyPriceCsv(mismatchedCsv, toyotaTarget)).toThrow(
+      "Unexpected Stooq CSV columns for 7203.jp.",
+    );
+  });
+
   it("fetches and parses daily prices through the Stooq client", async () => {
     const fetchedUrls: string[] = [];
     const client = createStooqClient({

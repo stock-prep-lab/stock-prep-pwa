@@ -89,6 +89,8 @@ type StooqCsvRow = {
   volume: number;
 };
 
+const expectedStooqCsvHeader = ["date", "open", "high", "low", "close", "volume"] as const;
+
 export class StooqApiKeyMissingError extends Error {
   constructor(message = "Stooq API key is not configured.") {
     super(message);
@@ -252,6 +254,13 @@ function parseStooqCsvRows(csv: string, sourceSymbol: string): StooqCsvRow[] {
     throw new StooqUnsupportedDataError(sourceSymbol);
   }
 
+  if (!isExpectedStooqCsvHeader(lines[0])) {
+    throw new StooqUnsupportedDataError(
+      sourceSymbol,
+      `Unexpected Stooq CSV columns for ${sourceSymbol}.`,
+    );
+  }
+
   const rows = lines.slice(1).map(parseStooqCsvRow).filter(isStooqCsvRow);
 
   if (rows.length === 0) {
@@ -287,6 +296,11 @@ function isStooqCsvRow(row: StooqCsvRow | null): row is StooqCsvRow {
     Number.isFinite(row.close) &&
     Number.isFinite(row.volume)
   );
+}
+
+function isExpectedStooqCsvHeader(headerLine: string): boolean {
+  const columns = headerLine.split(",").map((column) => column.trim().toLowerCase());
+  return expectedStooqCsvHeader.every((column, index) => columns[index] === column);
 }
 
 function buildStooqSymbolId(target: Pick<StooqEquityImportTarget, "code" | "region">): string {
