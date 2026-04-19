@@ -8,6 +8,7 @@
     "dev": "vite",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:stooq-live": "vitest run src/data/stooqLive.test.ts",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {

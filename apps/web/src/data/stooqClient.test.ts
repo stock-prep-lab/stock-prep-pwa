@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildStooqApiKeyGuideUrl,
   buildStooqCsvUrl,
   buildStooqSourceSymbol,
   createStooqClient,
@@ -28,6 +29,12 @@ const dailyCsv = [
   "2026-04-17,3138,3240,3112,3218,28430000",
 ].join("\n");
 
+const exchangeRateCsv = [
+  "Date,Open,High,Low,Close",
+  "2026-04-16,154.1,154.3,153.9,154.2",
+  "2026-04-17,154.2,154.6,154.0,154.42",
+].join("\n");
+
 describe("stooqClient", () => {
   it("builds Stooq source symbols for each supported region", () => {
     expect(buildStooqSourceSymbol({ code: "7203", region: "JP" })).toBe("7203.jp");
@@ -53,10 +60,23 @@ describe("stooqClient", () => {
     const url = buildStooqCsvUrl({
       apiKey: "test-key",
       baseUrl: "https://stooq.example/q/d/l/",
+      fromDate: "20260401",
+      sourceSymbol: "7203.jp",
+      toDate: "20260417",
+    });
+
+    expect(url.toString()).toBe(
+      "https://stooq.example/q/d/l/?s=7203.jp&i=d&f=20260401&t=20260417&apikey=test-key",
+    );
+  });
+
+  it("builds the manual Stooq API-key guide URL", () => {
+    const url = buildStooqApiKeyGuideUrl({
+      baseUrl: "https://stooq.example/q/d/",
       sourceSymbol: "7203.jp",
     });
 
-    expect(url.toString()).toBe("https://stooq.example/q/d/l/?s=7203.jp&i=d&apikey=test-key");
+    expect(url.toString()).toBe("https://stooq.example/q/d/?s=7203.jp&get_apikey");
   });
 
   it("parses Stooq daily price CSV into local daily price bars", () => {
@@ -91,10 +111,10 @@ describe("stooqClient", () => {
   });
 
   it("parses Stooq exchange-rate CSV into local exchange-rate bars", () => {
-    expect(parseStooqExchangeRateCsv(dailyCsv, "USDJPY")).toEqual([
+    expect(parseStooqExchangeRateCsv(exchangeRateCsv, "USDJPY")).toEqual([
       {
         baseCurrency: "USD",
-        close: 3190,
+        close: 154.2,
         date: "2026-04-16",
         id: "USDJPY-2026-04-16",
         pair: "USDJPY",
@@ -102,7 +122,7 @@ describe("stooqClient", () => {
       },
       {
         baseCurrency: "USD",
-        close: 3218,
+        close: 154.42,
         date: "2026-04-17",
         id: "USDJPY-2026-04-17",
         pair: "USDJPY",
@@ -152,7 +172,9 @@ describe("stooqClient", () => {
       fetcher: async () => new Response("Get your apikey at stooq.com"),
     });
 
-    await expect(client.fetchDailyPrices(toyotaTarget)).rejects.toThrow(StooqApiKeyMissingError);
+    await expect(client.fetchDailyPrices(toyotaTarget)).rejects.toThrow(
+      "https://stooq.com/q/d/?s=7203.jp&get_apikey",
+    );
   });
 
   it("converts an import target into a stored Stooq symbol", () => {

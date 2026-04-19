@@ -45,7 +45,7 @@ describe.skipIf(!apiKey)("stooq live import", () => {
     };
 
     const result = await syncStooqDailyData({
-      client: createStooqClient({ apiKey }),
+      client: createStooqClient({ apiKey, fromDate: "20260401", toDate: "20260417" }),
       equityTargets: [equityTarget],
       exchangeRatePairs: [stooqExchangeRatePairs[0]],
       repository,

@@ -7,6 +7,7 @@ import type {
 } from "@stock-prep/shared";
 
 export const STOOQ_CSV_BASE_URL = "https://stooq.com/q/d/l/";
+export const STOOQ_API_KEY_GUIDE_BASE_URL = "https://stooq.com/q/d/";
 
 export const stooqSourceSuffixByRegion = {
   HK: "hk",
@@ -78,6 +79,8 @@ export type StooqClientOptions = {
   apiKey?: string | null;
   baseUrl?: string;
   fetcher?: typeof fetch;
+  fromDate?: string;
+  toDate?: string;
 };
 
 type StooqCsvRow = {
@@ -89,7 +92,8 @@ type StooqCsvRow = {
   volume: number;
 };
 
-const expectedStooqCsvHeader = ["date", "open", "high", "low", "close", "volume"] as const;
+const expectedStooqPriceCsvHeader = ["date", "open", "high", "low", "close", "volume"] as const;
+const expectedStooqExchangeRateCsvHeader = ["date", "open", "high", "low", "close"] as const;
 
 export class StooqApiKeyMissingError extends Error {
   constructor(message = "Stooq API key is not configured.") {
@@ -128,16 +132,39 @@ export function buildStooqSourceSymbol({
 export function buildStooqCsvUrl({
   apiKey,
   baseUrl = STOOQ_CSV_BASE_URL,
+  fromDate,
   sourceSymbol,
+  toDate,
 }: {
   apiKey: string;
+  baseUrl?: string;
+  fromDate?: string;
+  sourceSymbol: string;
+  toDate?: string;
+}): URL {
+  const url = new URL(baseUrl);
+  url.searchParams.set("s", sourceSymbol);
+  url.searchParams.set("i", "d");
+  if (fromDate) {
+    url.searchParams.set("f", fromDate);
+  }
+  if (toDate) {
+    url.searchParams.set("t", toDate);
+  }
+  url.searchParams.set("apikey", apiKey);
+  return url;
+}
+
+export function buildStooqApiKeyGuideUrl({
+  baseUrl = STOOQ_API_KEY_GUIDE_BASE_URL,
+  sourceSymbol,
+}: {
   baseUrl?: string;
   sourceSymbol: string;
 }): URL {
   const url = new URL(baseUrl);
   url.searchParams.set("s", sourceSymbol);
-  url.searchParams.set("i", "d");
-  url.searchParams.set("apikey", apiKey);
+  url.search += "&get_apikey";
   return url;
 }
 
@@ -145,6 +172,8 @@ export function createStooqClient({
   apiKey = resolveStooqApiKey(),
   baseUrl = STOOQ_CSV_BASE_URL,
   fetcher = fetch,
+  fromDate,
+  toDate,
 }: StooqClientOptions = {}): StooqClient {
   if (!apiKey) {
     throw new StooqApiKeyMissingError();
@@ -156,7 +185,9 @@ export function createStooqClient({
         apiKey,
         baseUrl,
         fetcher,
+        fromDate,
         sourceSymbol: target.sourceSymbol,
+        toDate,
       });
 
       return parseStooqDailyPriceCsv(csv, target);
@@ -166,7 +197,9 @@ export function createStooqClient({
         apiKey,
         baseUrl,
         fetcher,
+        fromDate,
         sourceSymbol: pair.toLowerCase(),
+        toDate,
       });
 
       return parseStooqExchangeRateCsv(csv, pair);
@@ -190,7 +223,7 @@ export function parseStooqDailyPriceCsv(
   csv: string,
   target: StooqEquityImportTarget,
 ): DailyPriceBar[] {
-  return parseStooqCsvRows(csv, target.sourceSymbol).map((row) => ({
+  return parseStooqCsvRows(csv, target.sourceSymbol, expectedStooqPriceCsvHeader).map((row) => ({
     close: row.close,
     currency: target.currency,
     date: row.date,
@@ -209,32 +242,44 @@ export function parseStooqExchangeRateCsv(
   csv: string,
   pair: StooqExchangeRatePair,
 ): ExchangeRateBar[] {
-  return parseStooqCsvRows(csv, pair.toLowerCase()).map((row) => ({
-    baseCurrency: pair.slice(0, 3) as Exclude<CurrencyCode, "JPY">,
-    close: row.close,
-    date: row.date,
-    id: `${pair}-${row.date}`,
-    pair,
-    quoteCurrency: "JPY",
-  }));
+  return parseStooqCsvRows(csv, pair.toLowerCase(), expectedStooqExchangeRateCsvHeader).map(
+    (row) => ({
+      baseCurrency: pair.slice(0, 3) as Exclude<CurrencyCode, "JPY">,
+      close: row.close,
+      date: row.date,
+      id: `${pair}-${row.date}`,
+      pair,
+      quoteCurrency: "JPY",
+    }),
+  );
 }
 
 async function fetchStooqCsv({
   apiKey,
   baseUrl,
   fetcher,
+  fromDate,
   sourceSymbol,
+  toDate,
 }: {
   apiKey: string;
   baseUrl: string;
   fetcher: typeof fetch;
+  fromDate?: string;
   sourceSymbol: string;
+  toDate?: string;
 }): Promise<string> {
-  const response = await fetcher(buildStooqCsvUrl({ apiKey, baseUrl, sourceSymbol }));
+  const response = await fetcher(
+    buildStooqCsvUrl({ apiKey, baseUrl, fromDate, sourceSymbol, toDate }),
+  );
   const text = await response.text();
 
   if (text.toLowerCase().includes("get your apikey")) {
-    throw new StooqApiKeyMissingError("Stooq API key is missing or was rejected by Stooq.");
+    throw new StooqApiKeyMissingError(
+      `Stooq API key is missing or was rejected by Stooq. Get it manually at ${buildStooqApiKeyGuideUrl(
+        { sourceSymbol },
+      ).toString()}.`,
+    );
   }
 
   if (!response.ok) {
@@ -244,7 +289,11 @@ async function fetchStooqCsv({
   return text;
 }
 
-function parseStooqCsvRows(csv: string, sourceSymbol: string): StooqCsvRow[] {
+function parseStooqCsvRows(
+  csv: string,
+  sourceSymbol: string,
+  expectedHeader: readonly string[],
+): StooqCsvRow[] {
   const lines = csv
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -254,7 +303,7 @@ function parseStooqCsvRows(csv: string, sourceSymbol: string): StooqCsvRow[] {
     throw new StooqUnsupportedDataError(sourceSymbol);
   }
 
-  if (!isExpectedStooqCsvHeader(lines[0])) {
+  if (!isExpectedStooqCsvHeader(lines[0], expectedHeader)) {
     throw new StooqUnsupportedDataError(
       sourceSymbol,
       `Unexpected Stooq CSV columns for ${sourceSymbol}.`,
@@ -298,9 +347,12 @@ function isStooqCsvRow(row: StooqCsvRow | null): row is StooqCsvRow {
   );
 }
 
-function isExpectedStooqCsvHeader(headerLine: string): boolean {
+function isExpectedStooqCsvHeader(headerLine: string, expectedHeader: readonly string[]): boolean {
   const columns = headerLine.split(",").map((column) => column.trim().toLowerCase());
-  return expectedStooqCsvHeader.every((column, index) => columns[index] === column);
+  return (
+    columns.length === expectedHeader.length &&
+    expectedHeader.every((column, index) => columns[index] === column)
+  );
 }
 
 function buildStooqSymbolId(target: Pick<StooqEquityImportTarget, "code" | "region">): string {
