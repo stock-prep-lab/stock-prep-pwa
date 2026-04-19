@@ -126,7 +126,9 @@ export function buildStooqSourceSymbol({
   code: string;
   region: RegionCode;
 }): string {
-  return `${code.trim().toLowerCase()}.${stooqSourceSuffixByRegion[region]}`;
+  const normalizedCode =
+    region === "HK" ? code.trim().replace(/^0+/, "").toLowerCase() : code.trim().toLowerCase();
+  return `${normalizedCode}.${stooqSourceSuffixByRegion[region]}`;
 }
 
 export function buildStooqCsvUrl({

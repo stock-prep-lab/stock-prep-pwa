@@ -40,7 +40,7 @@ describe("stooqClient", () => {
     expect(buildStooqSourceSymbol({ code: "7203", region: "JP" })).toBe("7203.jp");
     expect(buildStooqSourceSymbol({ code: "AAPL", region: "US" })).toBe("aapl.us");
     expect(buildStooqSourceSymbol({ code: "HSBA", region: "UK" })).toBe("hsba.uk");
-    expect(buildStooqSourceSymbol({ code: "0700", region: "HK" })).toBe("0700.hk");
+    expect(buildStooqSourceSymbol({ code: "0700", region: "HK" })).toBe("700.hk");
   });
 
   it("keeps the Slice 10 exchange-rate targets explicit", () => {
