@@ -301,6 +301,7 @@
 ### 非対象
 - cron 自動更新
 - Stooq bulk data の定期取り込み
+- Stooq bulk `.txt` parser
 - 通知送信
 - Stooq で未提供の銘柄を補完する別データソース
 - リアルタイム価格
@@ -494,7 +495,9 @@
 - データ更新
 - 日本 / 米国 / 英国 / 香港 / 為替に分けた cron 実行
 - Stooq bulk data または個別 CSV による市場別更新
+- Stooq bulk `.txt` parser
 - 株式 / ETF / REIT のみを保存対象にするフィルタ
+- 失敗マーク付き銘柄の個別 CSV 再取得
 - 空の価格ファイルを価格データなし状態として扱う処理
 - 候補再計算
 

@@ -44,6 +44,7 @@
 - 投資対象商品は株式 / ETF / REIT を MVP の universe に含める
 - 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリは MVP では保存対象外にする
 - 全市場 universe は Stooq の daily ASCII bulk data を候補にし、直接取得できない場合は銘柄マスタに対する個別 CSV 取得へフォールバックする
+- bulk data は `.txt` 形式の解析を行い、個別 CSV 取得は手動更新、失敗銘柄の再取得、bulk 取得不可時の fallback に使う
 - 外貨建て保有の JPY 換算用に `USDJPY` / `GBPJPY` / `HKDJPY` の為替日次も扱う
 - 市場ごとの Stooq symbol は銘柄マスタで管理する
 - Stooq 側のカテゴリとアプリ内の商品種別は分けて保持し、REIT が独立カテゴリにない市場では銘柄マスタで分類する

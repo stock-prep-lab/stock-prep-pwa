@@ -39,8 +39,20 @@
 - bulk 内の Stooq カテゴリから、株式 / ETF / REIT のみを保存対象にする
 - ETF は Stooq 上の `tse etfs` / `nasdaq etfs` / `nyse etfs` / `lse etfs` / `hkex etfs` などを対象にする
 - REIT は Stooq 上で独立カテゴリがある場合は対象にし、独立カテゴリがない市場では銘柄マスタ側の商品種別で分類する
+- bulk 取り込みでは `.txt` 形式を解析する
+- 個別銘柄の CSV 取得は、cron 失敗銘柄の再取得、手動更新、bulk 取得不可時の fallback として残す
 - 空の価格ファイルは取り込み失敗ではなく、価格データなし状態として保存する
 - 壊れたファイル、想定外の列形式、ネットワーク失敗は取り込み失敗として扱う
+
+### MVP 保存対象
+
+| 市場 | 保存する商品 | Stooq 取り込み候補カテゴリ | MVP で保存しないもの |
+| --- | --- | --- | --- |
+| 日本 | 株式 / ETF / REIT | `tse stocks`, `tse etfs`, 銘柄マスタで REIT 判定 | futures, options, bonds, indices |
+| 米国 | 株式 / ETF / REIT | `nasdaq stocks`, `nyse stocks`, `nysemkt stocks`, `nasdaq etfs`, `nyse etfs`, 銘柄マスタで REIT 判定 | futures, options, bonds, indices |
+| 英国 | 株式 / ETF / REIT | `lse stocks`, `lse stocks intl`, `lse etfs`, 銘柄マスタで REIT 判定 | futures, options, bonds, indices |
+| 香港 | 株式 / ETF / REIT | `hkex stocks`, `hkex etfs`, `hkex reits` | cbbcs, dws, drs, bonds |
+| 為替 | JPY 換算に必要な通貨ペア | `USDJPY`, `GBPJPY`, `HKDJPY` | MVP に不要な通貨ペア |
 
 ### Stooq symbol 方針
 - アプリ内の銘柄コードと Stooq 取得用 symbol を分けて保持する
