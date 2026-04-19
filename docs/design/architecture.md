@@ -22,12 +22,15 @@
 
 ## MVP インフラ構成
 
-- MVP は Vercel Hobby と Supabase Free を第一候補にする
+- MVP は Vercel Hobby、Supabase Free、Cloudflare R2 Free を第一候補にする
 - Vercel は PWA 配信、Functions、Cron の実行基盤として使う
-- Supabase は Auth、Postgres、必要に応じた Storage の候補として使う
+- Supabase は Auth、Postgres の候補として使う
+- Cloudflare R2 は、価格履歴など重いファイルの object storage として使う
 - Neon Postgres は、DB を軽量な Postgres に寄せたい場合の代替候補にする
 - AWS EC2 などの自前サーバー構築は MVP では前提にしない
 - 価格データ量や利用者数が無料枠を超えそうになったら、DB の有料プランまたは保存範囲の見直しを行う
+- Stooq の圧縮 bulk サイズではなく、展開後 `.txt` と DB index を含む保存サイズで容量判断する
+- 無料枠では全履歴保存を前提にせず、最新値、計算済み指標、直近日足を優先する
 - Vercel Functions と DB は、接続先 DB に近い region を選ぶことを検討する
 
 ## repository 構成
@@ -62,8 +65,10 @@
 
 ### サーバー側保存先
 - 市場データ、銘柄マスタ、為替レート、保有情報はサーバー側の永続保存先を使う
+- 重い価格履歴ファイルは Cloudflare R2 に保存する
+- 銘柄マスタ、最新価格、計算済み指標、ランキング、保有情報、ウォッチリストは Supabase Postgres に保存する
 - DB 候補は Supabase Postgres を第一候補、Neon Postgres を代替候補として比較して決める
-- 大きな bulk data の原本や中間ファイルは、必要に応じて object storage を検討する
+- 大きな bulk data の原本や中間ファイルは、必要に応じて R2 に一時保存する
 
 ### 外部データ
 - Stooq CSV を第一候補にする
@@ -87,6 +92,24 @@
 - 候補計算
 - 通知判定
 - Push 通知送信
+
+### R2 / Supabase の使い分け
+
+| 保存先 | 置くもの | 置かないもの |
+| --- | --- | --- |
+| Cloudflare R2 | 正規化済み価格履歴ファイル、必要最小限の圧縮済み直近日足、更新 run の manifest | 保有情報、検索用の全行 DB、非圧縮 txt の長期保存、毎日の full snapshot |
+| Supabase Postgres | 認証、保有情報、銘柄マスタ、最新価格、計算済み指標、スクリーニング結果、ウォッチリスト、R2 manifest 参照 | 全銘柄の全履歴日足、大きな bulk 原本 |
+| IndexedDB | 端末ごとの表示キャッシュ、前回取得した保有情報、市場データの軽量キャッシュ | サーバー全体の正本データ |
+
+### R2 データ管理
+
+- 定期更新は全更新を基本にする
+- 更新中は `runs/{runId}/...` に書き込み、直接 `latest` を上書きしない
+- 更新完了後に件数、対象市場、対象商品、ファイルサイズ、空データを検証する
+- 検証に成功したら `latest/*.json` manifest を新しい `runId` に差し替える
+- 画面や API は R2 のファイルを直接探索せず、Supabase または R2 の latest manifest から参照する
+- 無料枠を優先し、保持する世代は latest と更新中 run を基本にする
+- 必要な場合のみ previous 1 世代を短期間残す
 
 ## ドメインロジック
 

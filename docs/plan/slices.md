@@ -17,7 +17,7 @@
 - 株式に加えて、ETF と REIT も MVP の投資対象に含める
 - 米国株、英国株、香港株を JPY 建てポートフォリオで評価するため、為替日次も取り込み対象に含める
 - 保有登録 / 編集画面は必要とし、静的 UI は Slice 6、IndexedDB キャッシュは Slice 9 以降、サーバー同期は Slice 16 以降で扱う
-- MVP インフラは Vercel Hobby + Supabase Free を第一候補とし、DB 容量や利用量に応じて Neon Postgres や有料プランを検討する
+- MVP インフラは Vercel Hobby + Supabase Free + Cloudflare R2 Free を第一候補とし、DB 容量や利用量に応じて Neon Postgres や有料プランを検討する
 
 ---
 
@@ -477,6 +477,7 @@
 - 購読解除
 - 最新データ配信 API
 - Supabase / Neon などサーバー側 DB への接続方針
+- Cloudflare R2 への価格履歴ファイル参照方針
 - サーバー側に保存された市場データを PWA / Web へ返す API
 - PWA / Web 起動時に、その端末の IndexedDB へキャッシュするための差分取得
 - 保有情報取得 API
@@ -491,7 +492,7 @@
 ### 完了条件
 - Functions が利用できる
 - 保有情報を別端末でも取得できる前提の API 境界ができる
-- MVP 用 DB 候補と必要な環境変数が整理されている
+- MVP 用 DB / R2 候補と必要な環境変数が整理されている
 
 ### テスト / 確認観点
 - `pnpm lint`
@@ -510,6 +511,9 @@
 - Stooq bulk data または個別 CSV による市場別更新
 - Stooq bulk `.txt` parser
 - 株式 / ETF / REIT のみを保存対象にするフィルタ
+- 正規化済み価格履歴ファイルの Cloudflare R2 保存
+- latest manifest による更新 run 管理
+- 最新価格、計算済み指標、ランキングの Supabase 保存
 - 失敗マーク付き銘柄の個別 CSV 再取得
 - 空の価格ファイルを価格データなし状態として扱う処理
 - 候補再計算
@@ -517,9 +521,13 @@
 ### 非対象
 - Push 送信
 - 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリの保存
+- 非圧縮 txt の長期保存
+- 毎日の full snapshot 永続保存
 
 ### 完了条件
 - cron で日次更新が走る
+- R2 の latest manifest が成功時のみ差し替わる
+- Supabase の最新値 / 指標 / ランキングが画面表示用に更新される
 
 ### テスト / 確認観点
 - `pnpm lint`
