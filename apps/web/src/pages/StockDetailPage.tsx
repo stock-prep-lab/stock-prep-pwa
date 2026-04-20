@@ -253,7 +253,7 @@ export function StockDetailPage() {
           </Link>
           <Link
             className="flex min-h-12 items-center justify-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-medium text-zinc-950 transition hover:border-teal-700 hover:text-teal-700"
-            to="/simulation"
+            to={`/simulation?symbol=${stock.code}`}
           >
             シミュレーションする
           </Link>

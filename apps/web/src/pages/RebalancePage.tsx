@@ -215,7 +215,11 @@ export function RebalancePage() {
           </div>
           <Link
             className="flex min-h-12 w-full items-center justify-center rounded-md bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-teal-700 sm:w-fit"
-            to="/simulation"
+            to={
+              selectedProposal
+                ? `/simulation?symbol=${selectedProposal.symbol.code}`
+                : "/simulation"
+            }
           >
             シミュレーションへ進む
           </Link>
