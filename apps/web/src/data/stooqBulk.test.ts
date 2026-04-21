@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildStooqBulkDownloadUrl,
   normalizeStooqBulkData,
-  normalizeStooqCsvFallbackData,
   parseStooqAsciiDailyPriceText,
   resolveBulkCategoryRule,
   stooqBulkImportScopes,
@@ -221,38 +220,6 @@ describe("stooqBulk", () => {
         sourceSymbol: "aapl.us",
       },
     ]);
-  });
-
-  it("normalizes CSV fallback into the same price-history shape", () => {
-    const history = normalizeStooqCsvFallbackData({
-      csv: ["Date,Open,High,Low,Close,Volume", "2026-04-17,3138,3240,3112,3218,28430000"].join(
-        "\n",
-      ),
-      target: createTarget(),
-    });
-
-    expect(history).toEqual({
-      bars: [
-        {
-          close: 3218,
-          currency: "JPY",
-          date: "2026-04-17",
-          high: 3240,
-          id: "jp-7203-2026-04-17",
-          low: 3112,
-          open: 3138,
-          region: "JP",
-          sourceSymbol: "7203.jp",
-          symbolId: "jp-7203",
-          volume: 28430000,
-        },
-      ],
-      currency: "JPY",
-      instrumentType: "stock",
-      region: "JP",
-      sourceSymbol: "7203.jp",
-      symbolId: "jp-7203",
-    });
   });
 
   it("resolves supported and unsupported category rules from bulk paths", () => {

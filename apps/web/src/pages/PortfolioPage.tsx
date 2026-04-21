@@ -99,7 +99,7 @@ export function PortfolioPage() {
       ) : portfolioState.status === "error" ? (
         <StatusPanel message={portfolioState.error} tone="error" />
       ) : portfolioState.result.symbolCount === 0 || portfolioState.result.dailyPriceCount === 0 ? (
-        <StatusPanel message="Stooq CSV 取得後に、保有を登録すると評価額と構成比を表示します。" />
+        <StatusPanel message="市場データ同期後に、保有を登録すると評価額と構成比を表示します。" />
       ) : portfolioState.result.portfolio.holdings.length === 0 ? (
         <StatusPanel message="保有がまだ登録されていません。銘柄詳細から保有を追加してください。" />
       ) : portfolio ? (

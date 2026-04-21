@@ -122,7 +122,7 @@ export function HoldingFormPage() {
       ) : formState.status === "error" ? (
         <StatusPanel message={formState.error} tone="error" />
       ) : formState.status === "not-found" ? (
-        <StatusPanel message="対象銘柄が IndexedDB に見つかりません。先に Stooq CSV を取得してください。" />
+        <StatusPanel message="対象銘柄が IndexedDB に見つかりません。先に市場データを同期してください。" />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
           <section className="flex flex-col gap-4" aria-labelledby="holding-target-heading">

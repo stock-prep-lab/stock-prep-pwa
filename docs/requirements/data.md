@@ -3,14 +3,10 @@
 ## 外部データ
 
 ### データソース
-- 第一候補は Stooq CSV
-- プログラムから Stooq CSV download endpoint を取得するには Stooq の API key が必要
-- API key は Stooq の `get_apikey` 導線で取得する
-- CSV download endpoint は `https://stooq.com/q/d/l/?s={sourceSymbol}&i=d&apikey={apikey}` 形式を使う
-- 全市場の universe 取り込みでは、Stooq の daily ASCII bulk data も候補にする
-- Stooq bulk download は認証コード導線を挟む可能性があるため、cron から無人で直接取得できるかは実装前に検証する
-- bulk download を cron から直接取得できない場合は、対象銘柄マスタに対して個別 CSV を分割取得する
-- API key は環境変数で扱い、リポジトリには保存しない
+- 第一候補は Stooq daily ASCII bulk data
+- 管理者が Stooq から市場別 ZIP を手動取得し、アプリの管理画面からアップロードする
+- アプリは Stooq に自動取得しに行かず、受け取った ZIP をサーバー側で取り込む
+- bulk 取り込みでは `.txt` 形式を解析する
 - 取得可否は Stooq 側の銘柄 / 市場対応に依存する
 - 未対応銘柄は取り込み失敗として扱い、アプリ側で状態を保持する
 
@@ -35,15 +31,10 @@
 
 ### Stooq bulk 取り込み方針
 - 市場別の daily ASCII bulk を日本 / 米国 / 英国 / 香港に分けて取り込む
-- Vercel Cron は市場ごとに時間をずらして起動する
+- 管理者は必要な市場の ZIP を毎日アップロードする
 - bulk 内の Stooq カテゴリから、株式 / ETF / REIT のみを保存対象にする
 - ETF は Stooq 上の `tse etfs` / `nasdaq etfs` / `nyse etfs` / `lse etfs` / `hkex etfs` などを対象にする
 - REIT は Stooq 上で独立カテゴリがある場合は対象にし、独立カテゴリがない市場では銘柄マスタ側の商品種別で分類する
-- bulk 取り込みでは `.txt` 形式を解析する
-- 個別銘柄の CSV 取得は、cron 失敗銘柄の再取得と手動更新のために残す
-- 個別 CSV fallback は、bulk 取り込みの代替本線ではなく、欠損や失敗を補う補助経路として扱う
-- cron で大量の個別 CSV fallback を自動実行するのではなく、失敗状態を保存して画面の再取り込み導線から実行する
-- 個別 CSV fallback で取得した結果も、通常の日足と同じ price bar 形式へ正規化して保存する
 - 空の価格ファイルは取り込み失敗ではなく、価格データなし状態として保存する
 - 壊れたファイル、想定外の列形式、ネットワーク失敗は取り込み失敗として扱う
 
@@ -112,7 +103,7 @@
 - 無料枠で進める場合は、最新値、計算済み指標、必要最小限の直近日足を優先して保存する
 - 価格履歴の重いファイルは Cloudflare R2 に置き、Supabase DB には検索や画面表示に必要な軽量データを置く
 - R2 には非圧縮 txt の長期保存や毎日の full snapshot を置かず、正規化済み圧縮ファイルと latest manifest を中心に置く
-- Supabase DB には保有情報、銘柄マスタ、画面表示用の最新価格、計算済み指標、ランキング、取り込み失敗状態、R2 manifest 参照を置く
+- Supabase DB には保有情報、銘柄マスタ、画面表示用の最新価格、計算済み指標、import job 状態、R2 manifest 参照を置く
 
 ## アプリ内データ
 

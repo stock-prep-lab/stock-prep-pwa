@@ -1,7 +1,5 @@
 import type { CurrencyCode, DailyPriceBar, RegionCode } from "@stock-prep/shared";
 
-import { parseStooqDailyPriceCsv } from "./stooqClient";
-
 export const STOOQ_BULK_BASE_URL = "https://stooq.com/db/d/";
 
 export type StooqInstrumentType = "etf" | "reit" | "stock";
@@ -283,23 +281,6 @@ export function normalizeStooqBulkData({
     symbols: [...symbolsBySourceSymbol.values()].sort((left, right) =>
       left.sourceSymbol.localeCompare(right.sourceSymbol),
     ),
-  };
-}
-
-export function normalizeStooqCsvFallbackData({
-  csv,
-  target,
-}: {
-  csv: string;
-  target: StooqBulkImportTarget;
-}): StooqNormalizedPriceHistoryFile {
-  return {
-    bars: parseStooqDailyPriceCsv(csv, target),
-    currency: target.currency,
-    instrumentType: target.instrumentType,
-    region: target.region,
-    sourceSymbol: target.sourceSymbol,
-    symbolId: buildBulkSymbolId(target),
   };
 }
 

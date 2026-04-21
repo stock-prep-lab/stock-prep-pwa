@@ -124,7 +124,7 @@ export function ScreeningPage() {
       <section className="flex flex-col gap-4" aria-labelledby="screening-results-heading">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <SectionHeader
-            description="IndexedDB に保存済みの Stooq 日足から、モメンタム、高値接近率、流動性を計算します。"
+            description="IndexedDB に保存済みの日足から、モメンタム、高値接近率、流動性を計算します。"
             title="候補一覧"
             titleId="screening-results-heading"
           />
@@ -160,7 +160,7 @@ export function ScreeningPage() {
           <StatusPanel message={screeningState.error} tone="error" />
         ) : screeningState.result.symbolCount === 0 ||
           screeningState.result.dailyPriceCount === 0 ? (
-          <StatusPanel message="Stooq CSV 取得後に、保存済み日足から候補を表示します。" />
+          <StatusPanel message="市場データ同期後に、保存済み日足から候補を表示します。" />
         ) : candidates.length === 0 ? (
           <StatusPanel message="計算に使える日足がまだ不足しています。" />
         ) : (

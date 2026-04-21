@@ -127,7 +127,7 @@ export function SimulationPage() {
         <StatusPanel message={simulationState.error} tone="error" />
       ) : simulationState.result.symbolCount === 0 ||
         simulationState.result.dailyPriceCount === 0 ? (
-        <StatusPanel message="Stooq CSV 取得後に、銘柄詳細またはリバランス提案から開くと計算できます。" />
+        <StatusPanel message="市場データ同期後に、銘柄詳細またはリバランス提案から開くと計算できます。" />
       ) : !target || !simulation ? (
         <StatusPanel message="対象銘柄が見つかりません。銘柄詳細から開き直してください。" />
       ) : (
