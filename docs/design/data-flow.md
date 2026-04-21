@@ -1,5 +1,8 @@
 # データフロー設計
 
+補足:
+- 保存責務の整理と fallback 方針の要約は `docs/design/data-delivery.md` を参照する
+
 ## 日次更新フロー
 
 1. Vercel Cron 起動
