@@ -141,6 +141,53 @@ export type BuildRebalancePlanOptions = BuildPortfolioValuationOptions & {
   maxProposals?: number;
 };
 
+export type PurchaseSimulationStatus =
+  | "insufficient-cash"
+  | "invalid-input"
+  | "missing-rate"
+  | "ready";
+
+export type PurchaseSimulationAllocation = {
+  colorIndex: number;
+  id: string;
+  kind: "cash" | "holding";
+  label: string;
+  ratio: number;
+  valueJpy: number;
+};
+
+export type PurchaseSimulation = {
+  afterAllocations: PurchaseSimulationAllocation[];
+  beforeAllocations: PurchaseSimulationAllocation[];
+  cashAfterJpy: number;
+  cashBeforeJpy: number;
+  cashUsageRatio: number;
+  exchangeRateToJpy: number | null;
+  purchaseAmountJpy: number;
+  purchaseAmountOriginal: number;
+  purchasePrice: number;
+  quantity: number;
+  status: PurchaseSimulationStatus;
+  statusMessage: string;
+  stockAllocationAfterRatio: number;
+  stockAllocationBeforeRatio: number;
+  targetAllocationAfterRatio: number;
+  targetAllocationBeforeRatio: number;
+  targetValueAfterJpy: number;
+  targetValueBeforeJpy: number;
+  topTwoAfterRatio: number;
+  topTwoBeforeRatio: number;
+  totalAssetValueJpy: number;
+};
+
+export type BuildPurchaseSimulationOptions = {
+  exchangeRates?: ExchangeRateBar[];
+  portfolio: PortfolioValuation;
+  purchasePrice: number;
+  quantity: number;
+  symbol: StoredStockSymbol;
+};
+
 const twelveMonthLookbackTradingDays = 252;
 const sixMonthLookbackTradingDays = 126;
 const oneMonthSkipTradingDays = 21;
@@ -427,6 +474,114 @@ export function buildRebalancePlan({
   };
 }
 
+/**
+ * 購入価格と株数から、買う前 / 買った後の構成比を計算する。
+ *
+ * 例:
+ * - 現金 300,000円、総資産 1,000,000円
+ * - 9432 を 160円で 1,000株買う
+ * - 購入額は 160,000円、現金は 140,000円に減る
+ * - その分だけ 9432 の評価額を増やして、円グラフ用の after 構成比を作る
+ *
+ * この関数は「もし買ったら」を見るだけで、保有や現金を永続保存しない。
+ */
+export function buildPurchaseSimulation({
+  exchangeRates = [],
+  portfolio,
+  purchasePrice,
+  quantity,
+  symbol,
+}: BuildPurchaseSimulationOptions): PurchaseSimulation {
+  const exchangeRateToJpy = findLatestJpyConversionRate(symbol.currency, exchangeRates);
+  const normalizedPrice = Number.isFinite(purchasePrice) ? purchasePrice : 0;
+  const normalizedQuantity = Number.isFinite(quantity) ? quantity : 0;
+  const cashBeforeJpy = portfolio.totalCashValueJpy;
+  const targetValueBeforeJpy = getHoldingValueBySymbolId(portfolio, symbol.id);
+  const stockAllocationBeforeRatio =
+    portfolio.totalAssetValueJpy > 0
+      ? portfolio.totalHoldingsValueJpy / portfolio.totalAssetValueJpy
+      : 0;
+  const targetAllocationBeforeRatio =
+    portfolio.totalAssetValueJpy > 0 ? targetValueBeforeJpy / portfolio.totalAssetValueJpy : 0;
+
+  if (!isPositiveFinite(normalizedPrice) || !isPositiveFinite(normalizedQuantity)) {
+    return buildEmptyPurchaseSimulation({
+      cashBeforeJpy,
+      exchangeRateToJpy,
+      portfolio,
+      purchasePrice: normalizedPrice,
+      quantity: normalizedQuantity,
+      status: "invalid-input",
+      statusMessage: "購入価格と株数を 0 より大きい数値で入力してください。",
+      targetAllocationBeforeRatio,
+      targetValueBeforeJpy,
+    });
+  }
+
+  if (exchangeRateToJpy === null) {
+    return buildEmptyPurchaseSimulation({
+      cashBeforeJpy,
+      exchangeRateToJpy,
+      portfolio,
+      purchasePrice: normalizedPrice,
+      quantity: normalizedQuantity,
+      status: "missing-rate",
+      statusMessage: `${symbol.currency} を JPY 換算する為替レートが不足しています。`,
+      targetAllocationBeforeRatio,
+      targetValueBeforeJpy,
+    });
+  }
+
+  const purchaseAmountOriginal = normalizedPrice * normalizedQuantity;
+  const purchaseAmountJpy = purchaseAmountOriginal * exchangeRateToJpy;
+  const cashAfterJpy = cashBeforeJpy - purchaseAmountJpy;
+  const status: PurchaseSimulationStatus = cashAfterJpy < 0 ? "insufficient-cash" : "ready";
+  const afterAllocations = buildPurchaseAfterAllocations({
+    cashAfterJpy,
+    portfolio,
+    purchaseAmountJpy,
+    symbol,
+  });
+  const targetValueAfterJpy = targetValueBeforeJpy + purchaseAmountJpy;
+  const targetAllocationAfterRatio =
+    portfolio.totalAssetValueJpy > 0 ? targetValueAfterJpy / portfolio.totalAssetValueJpy : 0;
+  const stockAllocationAfterRatio =
+    portfolio.totalAssetValueJpy > 0
+      ? (portfolio.totalHoldingsValueJpy + purchaseAmountJpy) / portfolio.totalAssetValueJpy
+      : 0;
+
+  return {
+    afterAllocations,
+    beforeAllocations: portfolio.allocations,
+    cashAfterJpy,
+    cashBeforeJpy,
+    cashUsageRatio: cashBeforeJpy > 0 ? purchaseAmountJpy / cashBeforeJpy : 0,
+    exchangeRateToJpy,
+    purchaseAmountJpy,
+    purchaseAmountOriginal,
+    purchasePrice: normalizedPrice,
+    quantity: normalizedQuantity,
+    status,
+    statusMessage:
+      status === "ready"
+        ? "購入後の構成比を計算できます。"
+        : "現金残高を超えるため、購入価格または株数を調整してください。",
+    stockAllocationAfterRatio,
+    stockAllocationBeforeRatio,
+    targetAllocationAfterRatio,
+    targetAllocationBeforeRatio,
+    targetValueAfterJpy,
+    targetValueBeforeJpy,
+    topTwoAfterRatio: calculateTopTwoConcentrationAfterPurchase({
+      portfolio,
+      purchaseAmountJpy,
+      symbolId: symbol.id,
+    }),
+    topTwoBeforeRatio: portfolio.topTwoConcentration,
+    totalAssetValueJpy: portfolio.totalAssetValueJpy,
+  };
+}
+
 function buildScreeningCandidate(
   symbol: StoredStockSymbol,
   prices: DailyPriceBar[],
@@ -666,6 +821,128 @@ function buildPortfolioAllocations({
   });
 }
 
+function buildEmptyPurchaseSimulation({
+  cashBeforeJpy,
+  exchangeRateToJpy,
+  portfolio,
+  purchasePrice,
+  quantity,
+  status,
+  statusMessage,
+  targetAllocationBeforeRatio,
+  targetValueBeforeJpy,
+}: {
+  cashBeforeJpy: number;
+  exchangeRateToJpy: number | null;
+  portfolio: PortfolioValuation;
+  purchasePrice: number;
+  quantity: number;
+  status: Exclude<PurchaseSimulationStatus, "ready">;
+  statusMessage: string;
+  targetAllocationBeforeRatio: number;
+  targetValueBeforeJpy: number;
+}): PurchaseSimulation {
+  const stockAllocationBeforeRatio =
+    portfolio.totalAssetValueJpy > 0
+      ? portfolio.totalHoldingsValueJpy / portfolio.totalAssetValueJpy
+      : 0;
+
+  return {
+    afterAllocations: portfolio.allocations,
+    beforeAllocations: portfolio.allocations,
+    cashAfterJpy: cashBeforeJpy,
+    cashBeforeJpy,
+    cashUsageRatio: 0,
+    exchangeRateToJpy,
+    purchaseAmountJpy: 0,
+    purchaseAmountOriginal: 0,
+    purchasePrice,
+    quantity,
+    status,
+    statusMessage,
+    stockAllocationAfterRatio: stockAllocationBeforeRatio,
+    stockAllocationBeforeRatio,
+    targetAllocationAfterRatio: targetAllocationBeforeRatio,
+    targetAllocationBeforeRatio,
+    targetValueAfterJpy: targetValueBeforeJpy,
+    targetValueBeforeJpy,
+    topTwoAfterRatio: portfolio.topTwoConcentration,
+    topTwoBeforeRatio: portfolio.topTwoConcentration,
+    totalAssetValueJpy: portfolio.totalAssetValueJpy,
+  };
+}
+
+function buildPurchaseAfterAllocations({
+  cashAfterJpy,
+  portfolio,
+  purchaseAmountJpy,
+  symbol,
+}: {
+  cashAfterJpy: number;
+  portfolio: PortfolioValuation;
+  purchaseAmountJpy: number;
+  symbol: StoredStockSymbol;
+}): PurchaseSimulationAllocation[] {
+  if (portfolio.totalAssetValueJpy <= 0) {
+    return [];
+  }
+
+  const valuesBySymbolId = new Map<
+    string,
+    {
+      id: string;
+      label: string;
+      valueJpy: number;
+    }
+  >();
+
+  for (const holding of portfolio.holdings) {
+    if (holding.symbol && holding.marketValueJpy !== null) {
+      const current = valuesBySymbolId.get(holding.symbol.id);
+      valuesBySymbolId.set(holding.symbol.id, {
+        id: current?.id ?? holding.holding.id,
+        label: holding.symbol.name,
+        valueJpy: (current?.valueJpy ?? 0) + holding.marketValueJpy,
+      });
+    }
+  }
+
+  const currentTarget = valuesBySymbolId.get(symbol.id);
+  valuesBySymbolId.set(symbol.id, {
+    id: currentTarget?.id ?? `simulation-${symbol.id}`,
+    label: symbol.name,
+    valueJpy: (currentTarget?.valueJpy ?? 0) + purchaseAmountJpy,
+  });
+
+  const holdingAllocations = [...valuesBySymbolId.values()].map((allocation, index) => ({
+    colorIndex: index,
+    id: allocation.id,
+    kind: "holding" as const,
+    label: allocation.label,
+    ratio: allocation.valueJpy / portfolio.totalAssetValueJpy,
+    valueJpy: allocation.valueJpy,
+  }));
+  const cashValueJpy = Math.max(cashAfterJpy, 0);
+  const cashAllocation: PurchaseSimulationAllocation = {
+    colorIndex: holdingAllocations.length,
+    id: "cash-after-purchase",
+    kind: "cash",
+    label: "JPY 現金",
+    ratio: cashValueJpy / portfolio.totalAssetValueJpy,
+    valueJpy: cashValueJpy,
+  };
+
+  return [...holdingAllocations, cashAllocation]
+    .filter((allocation) => allocation.valueJpy > 0)
+    .sort((left, right) => {
+      if (right.valueJpy !== left.valueJpy) {
+        return right.valueJpy - left.valueJpy;
+      }
+
+      return left.label.localeCompare(right.label);
+    });
+}
+
 function buildRebalanceProposal({
   candidate,
   cashAvailableJpy,
@@ -878,6 +1155,12 @@ function calculateTopTwoConcentrationAfterPurchase({
 
   const topValues = [...valuesBySymbolId.values()].sort((left, right) => right - left);
   return ((topValues[0] ?? 0) + (topValues[1] ?? 0)) / portfolio.totalAssetValueJpy;
+}
+
+function getHoldingValueBySymbolId(portfolio: PortfolioValuation, symbolId: string): number {
+  return portfolio.holdings
+    .filter((holding) => holding.symbol?.id === symbolId)
+    .reduce((sum, holding) => sum + (holding.marketValueJpy ?? 0), 0);
 }
 
 /**

@@ -9,7 +9,11 @@ import type {
   StoredStockSymbol,
 } from "@stock-prep/shared";
 
-import { buildPortfolioValuation, buildRebalancePlan } from "@stock-prep/domain";
+import {
+  buildPortfolioValuation,
+  buildPurchaseSimulation,
+  buildRebalancePlan,
+} from "@stock-prep/domain";
 
 describe("portfolio and rebalance calculation", () => {
   it("calculates portfolio value, allocation, cash, and unrealized profit in JPY", () => {
@@ -125,6 +129,87 @@ describe("portfolio and rebalance calculation", () => {
     expect(plan.proposals.length).toBeGreaterThan(0);
     expect(plan.proposals[0]?.purchaseAmountJpy).toBeGreaterThan(0);
     expect(plan.proposals[0]?.cashAfterJpy).toBeLessThan(120_000);
+  });
+
+  it("calculates before and after allocation for a purchase simulation", () => {
+    const symbol = createSymbol({ code: "9432", id: "jp-9432", name: "日本電信電話" });
+    const portfolio = buildPortfolioValuation({
+      cashBalances: [createCashBalance({ amount: 100_000 })],
+      dailyPrices: [
+        createPrice({ close: 1_000, date: "2026-04-17", symbolId: "jp-7203" }),
+        createPrice({ close: 100, date: "2026-04-17", symbolId: "jp-9432" }),
+      ],
+      holdings: [createHolding({ averagePrice: 900, quantity: 100, symbolId: "jp-7203" })],
+      symbols: [createSymbol({ code: "7203", id: "jp-7203", name: "トヨタ自動車" }), symbol],
+    });
+
+    const simulation = buildPurchaseSimulation({
+      portfolio,
+      purchasePrice: 100,
+      quantity: 500,
+      symbol,
+    });
+
+    expect(simulation.status).toBe("ready");
+    expect(simulation.purchaseAmountJpy).toBe(50_000);
+    expect(simulation.cashBeforeJpy).toBe(100_000);
+    expect(simulation.cashAfterJpy).toBe(50_000);
+    expect(simulation.targetAllocationBeforeRatio).toBe(0);
+    expect(simulation.targetAllocationAfterRatio).toBeCloseTo(50_000 / 200_000);
+    expect(
+      simulation.afterAllocations.find((item) => item.label === "日本電信電話")?.valueJpy,
+    ).toBe(50_000);
+  });
+
+  it("converts foreign purchase simulations to JPY", () => {
+    const symbol = createSymbol({
+      code: "AAPL",
+      currency: "USD",
+      id: "us-aapl",
+      name: "Apple",
+      region: "US",
+    });
+    const portfolio = buildPortfolioValuation({
+      cashBalances: [createCashBalance({ amount: 200_000 })],
+      dailyPrices: [],
+      holdings: [],
+      symbols: [symbol],
+    });
+
+    const simulation = buildPurchaseSimulation({
+      exchangeRates: [createExchangeRate({ close: 150, date: "2026-04-17", pair: "USDJPY" })],
+      portfolio,
+      purchasePrice: 100,
+      quantity: 3,
+      symbol,
+    });
+
+    expect(simulation.status).toBe("ready");
+    expect(simulation.exchangeRateToJpy).toBe(150);
+    expect(simulation.purchaseAmountOriginal).toBe(300);
+    expect(simulation.purchaseAmountJpy).toBe(45_000);
+    expect(simulation.cashAfterJpy).toBe(155_000);
+  });
+
+  it("marks purchase simulations as insufficient cash when the purchase exceeds cash", () => {
+    const symbol = createSymbol({ code: "9432", id: "jp-9432", name: "日本電信電話" });
+    const portfolio = buildPortfolioValuation({
+      cashBalances: [createCashBalance({ amount: 10_000 })],
+      dailyPrices: [],
+      holdings: [],
+      symbols: [symbol],
+    });
+
+    const simulation = buildPurchaseSimulation({
+      portfolio,
+      purchasePrice: 100,
+      quantity: 200,
+      symbol,
+    });
+
+    expect(simulation.status).toBe("insufficient-cash");
+    expect(simulation.purchaseAmountJpy).toBe(20_000);
+    expect(simulation.cashAfterJpy).toBe(-10_000);
   });
 });
 
