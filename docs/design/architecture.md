@@ -8,15 +8,15 @@
 
 - フロントは PWA
 - 端末ごとのローカル保存は IndexedDB
-- 日次更新と通知は Vercel Functions / Cron
+- 市場データ更新と通知は Vercel Functions を使う
 - GitHub Actions は CI と品質担保
 - デプロイは Vercel の Git 連携を使う
 
 ## データ保存の責務
 
 - IndexedDB は、PWA / Web を開いている端末ごとのローカル保存先として使う
-- Vercel Cron はユーザー端末の IndexedDB へ直接保存しない
-- Vercel Cron で取得した市場データは、サーバー側の保存先へ保存する
+- 手動取り込み処理はユーザー端末の IndexedDB へ直接保存しない
+- 管理画面からアップロードした市場データは、サーバー側の保存先へ保存する
 - PWA / Web は起動時に最新データ配信 API から市場データを取得し、その端末の IndexedDB にキャッシュする
 - 同じ URL のアプリでも、Mac の Chrome、Mac の Safari、iPhone の PWA などの IndexedDB は別の保存領域として扱う
 - 保有情報は複数端末で同じ内容を扱うため、サーバー側のユーザーデータ保存を正とする
@@ -26,27 +26,26 @@
 
 ## データ更新から画面表示まで
 
-1. Vercel Cron が市場ごとに時間をずらして起動する
-2. Cron が Stooq bulk data と為替データを取得する
-3. 取得結果を株式 / ETF / REIT の対象 universe に正規化する
+1. 管理者が Stooq から市場別 bulk ZIP を手動取得する
+2. 管理画面から ZIP をアップロードする
+3. Function が ZIP を受け取り、株式 / ETF / REIT の対象 universe に正規化する
 4. 正規化済みの重い価格履歴ファイルを Cloudflare R2 に保存する
-5. 銘柄マスタ、最新価格、取得失敗状態、R2 manifest 参照を Supabase に保存する
+5. 銘柄マスタ、最新価格、import job 状態、R2 manifest 参照を Supabase に保存する
 6. PWA / Web は起動時または画面表示時に Vercel Functions の最新データ API を呼ぶ
-7. API は Supabase と R2 manifest から必要な市場データを返す
+7. API は Supabase と R2 manifest から必要な市場データと dataset version を返す
 8. PWA / Web は受け取ったデータを、その端末の IndexedDB にキャッシュする
 9. 各画面は IndexedDB のキャッシュを優先して表示し、必要に応じて API 同期で更新する
 
 補足:
 - iPhone の PWA、iPhone の Safari、Mac の Chrome などは IndexedDB が別領域になる
-- Cron は特定端末の IndexedDB を知らないため、端末へ直接保存しない
+- サーバー側の取り込み処理は特定端末の IndexedDB を知らないため、端末へ直接保存しない
 - 端末間で共有したい保有情報は Supabase 側を正とし、IndexedDB は表示高速化とオフライン用キャッシュにする
-- Cron で更新に失敗した銘柄は失敗状態を保存し、ホームや銘柄詳細などで再取り込み導線を出す
-- 個別 CSV は通常の全件取り込みではなく、失敗銘柄だけを手動で再取得する fallback として扱う
+- 同期は PC とスマホが互いに直接やり取りするのではなく、同じ dataset version を見て各端末がサーバーから再取得する
 
 ## MVP インフラ構成
 
 - MVP は Vercel Hobby、Supabase Free、Cloudflare R2 Free を第一候補にする
-- Vercel は PWA 配信、Functions、Cron の実行基盤として使う
+- Vercel は PWA 配信と Functions の実行基盤として使う
 - Supabase は Auth、Postgres の候補として使う
 - Cloudflare R2 は、価格履歴など重いファイルの object storage として使う
 - Neon Postgres は、DB を軽量な Postgres に寄せたい場合の代替候補にする
@@ -61,7 +60,7 @@
 - `apps/web`: PWA 本体
 - `packages/shared`: 共通型 / 定数 / schema
 - `packages/domain`: 計算ロジック
-- `vercel/functions`: API / cron / push
+- `vercel/functions`: API / import / push
 - `docs`: 要件 / 設計 / 計画
 
 ## フロント
@@ -83,38 +82,34 @@
 - 最新データ配信
 - 保有情報取得
 - 保有情報更新
-- 手動更新トリガ
+- 手動 bulk 取り込み
 - 必要な集計結果の返却
 
 ### サーバー側保存先
 - 市場データ、銘柄マスタ、為替レート、保有情報はサーバー側の永続保存先を使う
 - 重い価格履歴ファイルは Cloudflare R2 に保存する
-- 銘柄マスタ、最新価格、取得失敗状態、R2 manifest 参照、保有情報、ウォッチリストは Supabase Postgres に保存する
+- 銘柄マスタ、最新価格、import job 状態、R2 manifest 参照、保有情報、ウォッチリストは Supabase Postgres に保存する
 - 最新価格は、一覧、ホーム、ポートフォリオ、検索結果などの軽量表示で R2 の大きな履歴ファイルを毎回読まないための表示キャッシュとして使う
-- 計算済み指標やランキングは、cron の定期更新時に再計算して Supabase に保存する。ただしユーザー保有起因のポートフォリオ評価やリバランスは画面表示時に最新保有と価格から計算する
-- 取得失敗状態は、cron で bulk 取得や銘柄単位の更新に失敗したときに保存し、画面の警告表示と手動再取り込み対象の判定に使う
+- 計算済み指標やランキングは、市場データ取り込みのたびに再計算して Supabase に保存する。ただしユーザー保有起因のポートフォリオ評価やリバランスは画面表示時に最新保有と価格から計算する
+- import job 状態は、管理画面で取り込み成否や最新 dataset version を確認するために使う
 - DB 候補は Supabase Postgres を第一候補、Neon Postgres を代替候補として比較して決める
 - 大きな bulk data の原本や中間ファイルは、必要に応じて R2 に一時保存する
 
 ### 外部データ
-- Stooq CSV を第一候補にする
-- Stooq API key は Vercel 環境変数で管理する
-- Stooq CSV download endpoint には `apikey` parameter を付与する
+- Stooq daily ASCII bulk data を第一候補にする
 - 取得対象は日本株を主軸に、米国株、英国株、香港株も同じ日足取り込み基盤で扱う
 - 投資対象商品は株式 / ETF / REIT を MVP の universe に含める
 - 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリは MVP では保存対象外にする
-- 全市場 universe は Stooq の daily ASCII bulk data を候補にし、直接取得できない場合は銘柄マスタに対する個別 CSV 取得へフォールバックする
-- bulk data は `.txt` 形式の解析を行い、個別 CSV 取得は手動更新、失敗銘柄の再取得に使う
-- cron で bulk 取得や銘柄単位の取り込みに失敗した場合は、まず失敗状態を Supabase に保存し、画面からの再取り込み導線で個別 CSV を使う
+- 管理者が Stooq から市場別 ZIP を手動取得し、管理画面からアップロードする
+- bulk data は `.txt` 形式の解析を行う
 - 外貨建て保有の JPY 換算用に `USDJPY` / `GBPJPY` / `HKDJPY` の為替日次も扱う
 - 市場ごとの Stooq symbol は銘柄マスタで管理する
 - Stooq 側のカテゴリとアプリ内の商品種別は分けて保持し、REIT が独立カテゴリにない市場では銘柄マスタで分類する
 - Stooq 側で取得できない銘柄は、未対応状態として保存する
 - 空の価格ファイルはエラーではなく、価格データなし状態として保存する
 
-### Vercel Cron
-- 日本 / 米国 / 英国 / 香港 / 為替に分けた外部データ取得
-- 市場ごとに cron 時刻をずらして、1 回の実行で全市場をまとめて処理しない
+### 更新ジョブ
+- 市場別 ZIP の受け取り
 - データ整形
 - 候補計算
 - 通知判定
@@ -125,7 +120,7 @@
 | 保存先 | 置くもの | 置かないもの |
 | --- | --- | --- |
 | Cloudflare R2 | 正規化済み価格履歴ファイル、必要最小限の圧縮済み直近日足、更新 run の manifest | 保有情報、検索用の全行 DB、非圧縮 txt の長期保存、毎日の full snapshot |
-| Supabase Postgres | 認証、保有情報、銘柄マスタ、画面表示用の最新価格、計算済み指標、スクリーニング結果、取り込み失敗状態、ウォッチリスト、R2 manifest 参照 | 全銘柄の全履歴日足、大きな bulk 原本 |
+| Supabase Postgres | 認証、保有情報、銘柄マスタ、画面表示用の最新価格、計算済み指標、スクリーニング結果、import job 状態、ウォッチリスト、R2 manifest 参照 | 全銘柄の全履歴日足、大きな bulk 原本 |
 | IndexedDB | 端末ごとの表示キャッシュ、前回取得した保有情報、市場データの軽量キャッシュ | サーバー全体の正本データ |
 
 ### R2 データ管理
@@ -140,10 +135,10 @@
 
 ## 画面モック回収方針
 
-- ホーム / 検索 / 銘柄詳細 / スクリーニングに残る静的モックは、Stooq bulk 取り込み、R2 / Supabase 保存、最新データ API の境界ができた後に回収する
+- ホーム / 検索 / 銘柄詳細 / スクリーニングに残る静的モックは、手動 bulk 取り込み、R2 / Supabase 保存、最新データ API の境界ができた後に回収する
 - 検索は銘柄マスタが正規化されてから、本物の銘柄コード / 銘柄名 / 市場 / 通貨 / 商品種別で動かす
 - 銘柄詳細は R2 / IndexedDB の日足履歴が読めるようになってから、lightweight-charts でローソク足、移動平均、出来高を表示する
-- ホームは Supabase の最新価格、取得失敗状態、保有サマリーが揃ってから、本物の更新状況と主要導線を表示する
+- ホームは Supabase の最新価格、dataset version、保有サマリーが揃ってから、本物の更新状況と主要導線を表示する
 - スクリーニングは bulk 由来の対象 universe が揃ってから、静的候補を廃止し、株式 / ETF / REIT を含む本物ランキングに切り替える
 - PWA installable 対応は、主要画面の本物データ化後に行う
 

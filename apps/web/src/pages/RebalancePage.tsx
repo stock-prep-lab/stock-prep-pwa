@@ -107,7 +107,7 @@ export function RebalancePage() {
       ) : rebalanceState.status === "error" ? (
         <StatusPanel message={rebalanceState.error} tone="error" />
       ) : rebalanceState.result.symbolCount === 0 || rebalanceState.result.dailyPriceCount === 0 ? (
-        <StatusPanel message="Stooq CSV 取得後に、保有と現金を登録すると提案を表示します。" />
+        <StatusPanel message="市場データ同期後に、保有と現金を登録すると提案を表示します。" />
       ) : plan ? (
         <>
           <section className="flex flex-col gap-4" aria-labelledby="rebalance-summary-heading">

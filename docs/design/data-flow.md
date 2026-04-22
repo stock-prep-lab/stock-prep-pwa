@@ -5,67 +5,44 @@
 
 ## 日次更新フロー
 
-1. Vercel Cron 起動
-2. 日本 / 米国 / 英国 / 香港 / 為替の対象単位を判定
-3. Stooq API key を使って日足を取得
-4. bulk 取得が使える市場では daily ASCII bulk を取得
-5. bulk 取得や銘柄単位の取り込みに失敗した場合は、自動で大量の個別 CSV fallback を走らせず、失敗状態を保存する
-6. 株式 / ETF / REIT のみを保存対象にする
-7. 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリを除外する
-8. 為替は `USDJPY` / `GBPJPY` / `HKDJPY` を取得する
-9. データ整形
-10. 市場 / 商品種別 / 通貨 / sourceSymbol を付与
-11. 正規化済み価格履歴を R2 の `runs/{runId}/...` に保存
-12. 画面表示用の最新価格、計算済み指標、スクリーニング結果を Supabase に保存
-13. R2 manifest を検証し、成功したら latest manifest を差し替える
-14. 空の価格ファイルは価格データなし状態として保存
-15. 取り込み失敗銘柄の状態保存
-16. 為替取得失敗ペアの状態保存
-17. 候補計算
-18. 通知判定
-19. Push 通知送信
+1. 管理者が Stooq から市場別 bulk ZIP をダウンロードする
+2. 管理画面から日本 / 米国 / 英国 / 香港 / 為替の対象 ZIP をアップロードする
+3. Function が ZIP を展開し、daily ASCII `.txt` を解析する
+4. 株式 / ETF / REIT のみを保存対象にする
+5. 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリを除外する
+6. 為替は `USDJPY` / `GBPJPY` / `HKDJPY` を扱う
+7. データ整形
+8. 市場 / 商品種別 / 通貨 / sourceSymbol を付与
+9. 正規化済み価格履歴を R2 の `runs/{runId}/...` に保存
+10. 画面表示用の最新価格、計算済み指標、スクリーニング結果を Supabase に保存
+11. R2 manifest を検証し、成功したら latest manifest と dataset version を差し替える
+12. 空の価格ファイルは価格データなし状態として保存
+13. import job 状態を保存
+14. 候補計算
+15. 通知判定
+16. Push 通知送信
 
-## cron から画面表示までの流れ
+## 手動取り込みから画面表示までの流れ
 
-1. Vercel Cron が市場別の更新 Function を起動
-2. Function が Stooq から日足データを取得
+1. 管理画面が市場別の import Function を起動する
+2. Function がアップロード済み ZIP を受け取る
 3. Function が株式 / ETF / REIT のみを抽出し、価格履歴を圧縮ファイルに正規化
 4. Function が価格履歴ファイルを R2 の更新 run に保存
 5. Function が画面表示用の最新値、計算済み指標、ランキング、R2 manifest 参照を Supabase に保存
-6. Function が失敗銘柄や失敗市場の状態を Supabase に保存
-7. Function が latest manifest を差し替えて、更新完了状態にする
-8. ホームや銘柄詳細は、失敗状態がある場合に再取り込み導線を表示する
-9. PWA / Web が起動時または画面表示時に Supabase の最新データ配信 API を読む
-10. PWA / Web が取得結果をその端末の IndexedDB にキャッシュする
+6. Function が import job 状態を Supabase に保存する
+7. Function が latest manifest と dataset version を差し替えて、更新完了状態にする
+8. PWA / Web が起動時または画面表示時に最新データ配信 API を読む
+9. PWA / Web がサーバーの dataset version とローカル version を比較する
+10. サーバー版が新しい場合だけ取得結果をその端末の IndexedDB にキャッシュする
 11. ホーム、検索、スクリーニング、ポートフォリオ画面に表示する
 12. 詳細チャートで履歴が必要な場合は、API が latest manifest をもとに R2 の該当ファイルを参照する
-
-## 手動更新フロー
-
-1. ホームまたは銘柄詳細から手動更新を実行
-2. 対象銘柄または失敗マーク付き銘柄を判定
-3. Stooq 個別 CSV endpoint で日足を取得
-4. 取得成功時は日次価格を保存し、失敗マークを解除
-5. 取得失敗時は失敗マークと理由を更新
-6. 価格データが空の場合はエラーではなく価格データなし状態として表示
-
-## 個別 CSV 再取り込みフロー
-
-1. cron が bulk 取得不可、bulk 内の個別銘柄欠損、または銘柄単位の取り込み失敗を Supabase に記録
-2. ホームまたは銘柄詳細で失敗状態と再取り込みボタンを表示
-3. ユーザー操作で対象銘柄の `sourceSymbol` を使って Stooq 個別 CSV endpoint に問い合わせ
-4. 取得できた日足を通常の価格データと同じ形式に正規化
-5. Supabase の最新価格 / 失敗状態を更新
-6. 必要な指標は再計算し、画面表示用の値を更新する
-7. 必要に応じて R2 の正規化済み価格履歴へ次回全更新で反映
-8. 取得できない場合は unsupported / noData / failed の状態を保存し、画面で再試行可能にする
 
 ## クライアント起動時フロー
 
 1. PWA 起動
 2. IndexedDB から前回データ読込
 3. 画面表示
-4. 最新データ配信 API に更新有無を問い合わせ
+4. 最新データ配信 API に dataset version を問い合わせ
 5. サーバー側に新しい市場データがあれば取得
 6. 取得した市場データを、その端末の IndexedDB に保存
 7. 差分更新
@@ -74,12 +51,13 @@
 
 ## 保存先の考え方
 
-- Vercel Cron はサーバー側で実行され、ユーザー端末の IndexedDB には直接書き込まない
+- 取り込み Function はサーバー側で実行され、ユーザー端末の IndexedDB には直接書き込まない
 - PWA / Web は、開かれた実行環境ごとの IndexedDB に保存する
 - Mac のブラウザ、スマホのブラウザ、ホーム画面に追加した PWA は、それぞれ別の IndexedDB を持つ前提で設計する
 - 価格履歴は R2、検索や一覧に必要な軽量データは Supabase に保存する
 - 市場データはサーバー側の保存先から配信し、各端末の IndexedDB はローカルキャッシュとして使う
 - 保有情報はサーバー側の保存先を正とし、各端末の IndexedDB はローカルキャッシュとして使う
+- PC とスマホは互いに直接同期せず、同じ dataset version を見て別々に再同期する
 - 保有情報のサーバー保存には、ユーザー識別または個人利用向けの認証導線を必要とする
 
 ## R2 更新管理フロー
@@ -88,8 +66,8 @@
 2. 更新中ファイルは R2 の `runs/{runId}/...` に保存する
 3. `runs/{runId}/manifest.json` に対象市場、商品種別、ファイル一覧、件数、作成日時を保存する
 4. manifest と Supabase に保存した最新値 / 指標の整合性を確認する
-5. 成功時のみ `latest/market-data.json` を新しい `runId` に差し替える
-6. 失敗時は latest を変更せず、失敗状態を Supabase に記録する
+5. 成功時のみ `latest/market-data.json` と dataset version を新しい `runId` に差し替える
+6. 失敗時は latest を変更せず、import job 状態を Supabase に記録する
 7. 古い run は削除し、必要な場合のみ previous 1 世代を短期間残す
 
 ## 検索フロー
