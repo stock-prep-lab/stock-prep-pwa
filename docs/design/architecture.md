@@ -60,7 +60,7 @@
 - `apps/web`: PWA 本体
 - `packages/shared`: 共通型 / 定数 / schema
 - `packages/domain`: 計算ロジック
-- `vercel/functions`: API / import / push
+- `api`: Vercel Functions の entrypoint
 - `docs`: 要件 / 設計 / 計画
 
 ## フロント
@@ -85,6 +85,14 @@
 - 手動 bulk 取り込み
 - 必要な集計結果の返却
 
+### Slice 16 時点の API 境界
+- `GET /api/dataset-version`: ローカルの `dataset version` と比較し、再同期要否を返す
+- `GET /api/market-data`: 銘柄マスタ、日足、為替、`dataset version` を返す
+- `GET /api/holdings`: サーバー側の保有情報と現金を返す
+- `PUT /api/holdings`: 保有更新を保存し、更新後の保有 payload を返す
+- 開発中は Vite の `/api/*` middleware が同じ handler を使い、Vercel 本番では `api/*.ts` を entrypoint にする
+- Supabase / R2 の本接続は Slice 17 以降で差し替え、Slice 16 では API 契約と IndexedDB 同期導線を先に固める
+
 ### サーバー側保存先
 - 市場データ、銘柄マスタ、為替レート、保有情報はサーバー側の永続保存先を使う
 - 重い価格履歴ファイルは Cloudflare R2 に保存する
@@ -94,6 +102,7 @@
 - import job 状態は、管理画面で取り込み成否や最新 dataset version を確認するために使う
 - DB 候補は Supabase Postgres を第一候補、Neon Postgres を代替候補として比較して決める
 - 大きな bulk data の原本や中間ファイルは、必要に応じて R2 に一時保存する
+- 想定する環境変数は `STOCK_PREP_SUPABASE_URL`、`STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY`、`STOCK_PREP_R2_ACCOUNT_ID`、`STOCK_PREP_R2_ACCESS_KEY_ID`、`STOCK_PREP_R2_SECRET_ACCESS_KEY`、`STOCK_PREP_R2_BUCKET`
 
 ### 外部データ
 - Stooq daily ASCII bulk data を第一候補にする

@@ -6,6 +6,7 @@ import {
   loadHoldingFormTargetFromIndexedDb,
   saveHoldingToIndexedDb,
 } from "../data/portfolioRebalanceData";
+import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 
 type HoldingFormState =
   | {
@@ -35,37 +36,43 @@ export function HoldingFormPage() {
   useEffect(() => {
     let isMounted = true;
 
-    loadHoldingFormTargetFromIndexedDb(symbolCode ?? "")
-      .then((target) => {
-        if (!isMounted) {
-          return;
-        }
+    const loadTarget = () => {
+      void loadHoldingFormTargetFromIndexedDb(symbolCode ?? "")
+        .then((target) => {
+          if (!isMounted) {
+            return;
+          }
 
-        if (!target) {
-          setFormState({ status: "not-found" });
-          return;
-        }
+          if (!target) {
+            setFormState({ status: "not-found" });
+            return;
+          }
 
-        setQuantity(target.existingHolding?.quantity.toString() ?? "");
-        setAveragePrice(
-          target.existingHolding?.averagePrice.toString() ??
-            target.latestPrice?.close.toString() ??
-            "",
-        );
-        setFormState({ status: "loaded", target });
-      })
-      .catch((error: unknown) => {
-        if (isMounted) {
-          setFormState({
-            error:
-              error instanceof Error ? error.message : "保有登録データを読み込めませんでした。",
-            status: "error",
-          });
-        }
-      });
+          setQuantity(target.existingHolding?.quantity.toString() ?? "");
+          setAveragePrice(
+            target.existingHolding?.averagePrice.toString() ??
+              target.latestPrice?.close.toString() ??
+              "",
+          );
+          setFormState({ status: "loaded", target });
+        })
+        .catch((error: unknown) => {
+          if (isMounted) {
+            setFormState({
+              error:
+                error instanceof Error ? error.message : "保有登録データを読み込めませんでした。",
+              status: "error",
+            });
+          }
+        });
+    };
+
+    loadTarget();
+    const unsubscribe = subscribeToStockPrepDataChanged(loadTarget);
 
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, [symbolCode]);
 
@@ -112,7 +119,7 @@ export function HoldingFormPage() {
         <div className="flex flex-col gap-3">
           <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">保有を記録する</h1>
           <p className="max-w-2xl text-base leading-7 text-zinc-700">
-            保有株数と取得単価を IndexedDB に保存し、ポートフォリオ評価へ反映します。
+            保有株数と取得単価をサーバーへ保存し、この端末の IndexedDB キャッシュにも反映します。
           </p>
         </div>
       </div>

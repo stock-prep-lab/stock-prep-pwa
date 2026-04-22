@@ -3,29 +3,30 @@ import type {
   DailyPriceBar,
   ExchangeRateBar,
   PortfolioHolding,
+  StockPrepSnapshot,
+  StoredSyncState,
   StoredStockSymbol,
 } from "@stock-prep/shared";
 
+import { dummyStockPrepSnapshot } from "../data/seedSnapshot";
+
 export const STOCK_PREP_DB_NAME = "stock-prep-lab";
-export const STOCK_PREP_DB_VERSION = 1;
+export const STOCK_PREP_DB_VERSION = 2;
 
 export const stockPrepStores = {
   cash: "cash",
   dailyPrices: "dailyPrices",
   exchangeRates: "exchangeRates",
   holdings: "holdings",
+  syncState: "syncState",
   symbols: "symbols",
 } as const;
 
 type StockPrepStoreName = (typeof stockPrepStores)[keyof typeof stockPrepStores];
 
-export type StockPrepSnapshot = {
-  cashBalances: CashBalance[];
-  dailyPrices: DailyPriceBar[];
-  exchangeRates: ExchangeRateBar[];
-  holdings: PortfolioHolding[];
-  symbols: StoredStockSymbol[];
-};
+export type MarketDataSnapshot = Pick<StockPrepSnapshot, "dailyPrices" | "exchangeRates" | "symbols">;
+
+export type HoldingsSnapshot = Pick<StockPrepSnapshot, "cashBalances" | "holdings">;
 
 export type StockPrepDbRepository = {
   clearAllStores: () => Promise<void>;
@@ -35,6 +36,7 @@ export type StockPrepDbRepository = {
   getExchangeRate: (id: ExchangeRateBar["id"]) => Promise<ExchangeRateBar | null>;
   getHolding: (id: PortfolioHolding["id"]) => Promise<PortfolioHolding | null>;
   getSymbol: (id: StoredStockSymbol["id"]) => Promise<StoredStockSymbol | null>;
+  getSyncState: (id: StoredSyncState["id"]) => Promise<StoredSyncState | null>;
   getSymbolByCodeRegion: (
     code: StoredStockSymbol["code"],
     region: StoredStockSymbol["region"],
@@ -44,11 +46,14 @@ export type StockPrepDbRepository = {
   listExchangeRates: () => Promise<ExchangeRateBar[]>;
   listHoldings: () => Promise<PortfolioHolding[]>;
   listSymbols: () => Promise<StoredStockSymbol[]>;
+  putSyncState: (syncState: StoredSyncState) => Promise<void>;
   putCashBalance: (cashBalance: CashBalance) => Promise<void>;
   putDailyPrice: (price: DailyPriceBar) => Promise<void>;
   putExchangeRate: (rate: ExchangeRateBar) => Promise<void>;
   putHolding: (holding: PortfolioHolding) => Promise<void>;
   putSymbol: (symbol: StoredStockSymbol) => Promise<void>;
+  replaceHoldingsSnapshot: (snapshot: HoldingsSnapshot) => Promise<void>;
+  replaceMarketDataSnapshot: (snapshot: MarketDataSnapshot) => Promise<void>;
 };
 
 export function openStockPrepDb({
@@ -89,6 +94,7 @@ export function createStockPrepDbRepository(db: IDBDatabase): StockPrepDbReposit
     getExchangeRate: (id) => getByKey<ExchangeRateBar>(db, stockPrepStores.exchangeRates, id),
     getHolding: (id) => getByKey<PortfolioHolding>(db, stockPrepStores.holdings, id),
     getSymbol: (id) => getByKey<StoredStockSymbol>(db, stockPrepStores.symbols, id),
+    getSyncState: (id) => getByKey<StoredSyncState>(db, stockPrepStores.syncState, id),
     getSymbolByCodeRegion: (code, region) =>
       getByIndex<StoredStockSymbol>(db, stockPrepStores.symbols, "by_code_region", [code, region]),
     listCashBalances: () => getAll<CashBalance>(db, stockPrepStores.cash),
@@ -96,11 +102,14 @@ export function createStockPrepDbRepository(db: IDBDatabase): StockPrepDbReposit
     listExchangeRates: () => getAll<ExchangeRateBar>(db, stockPrepStores.exchangeRates),
     listHoldings: () => getAll<PortfolioHolding>(db, stockPrepStores.holdings),
     listSymbols: () => getAll<StoredStockSymbol>(db, stockPrepStores.symbols),
+    putSyncState: (syncState) => putValue(db, stockPrepStores.syncState, syncState),
     putCashBalance: (cashBalance) => putValue(db, stockPrepStores.cash, cashBalance),
     putDailyPrice: (price) => putValue(db, stockPrepStores.dailyPrices, price),
     putExchangeRate: (rate) => putValue(db, stockPrepStores.exchangeRates, rate),
     putHolding: (holding) => putValue(db, stockPrepStores.holdings, holding),
     putSymbol: (symbol) => putValue(db, stockPrepStores.symbols, symbol),
+    replaceHoldingsSnapshot: (snapshot) => replaceHoldingsSnapshot(db, snapshot),
+    replaceMarketDataSnapshot: (snapshot) => replaceMarketDataSnapshot(db, snapshot),
   };
 }
 
@@ -118,6 +127,16 @@ export async function saveDummyStockPrepData(repository: StockPrepDbRepository):
   await Promise.all(
     dummyStockPrepSnapshot.cashBalances.map((cash) => repository.putCashBalance(cash)),
   );
+  await repository.putSyncState({
+    datasetVersion: "local-dummy-v1",
+    id: "market-data",
+    syncedAt: "2026-04-17T15:00:00+09:00",
+  });
+  await repository.putSyncState({
+    datasetVersion: "local-dummy-v1",
+    id: "holdings",
+    syncedAt: "2026-04-17T15:00:00+09:00",
+  });
 }
 
 export async function loadStockPrepSnapshot(
@@ -140,83 +159,7 @@ export async function loadStockPrepSnapshot(
   };
 }
 
-export const dummyStockPrepSnapshot: StockPrepSnapshot = {
-  cashBalances: [
-    {
-      amount: 331000,
-      currency: "JPY",
-      updatedAt: "2026-04-17T15:00:00+09:00",
-    },
-  ],
-  dailyPrices: [
-    {
-      close: 3218,
-      currency: "JPY",
-      date: "2026-04-17",
-      high: 3240,
-      id: "jp-7203-2026-04-17",
-      low: 3112,
-      open: 3138,
-      region: "JP",
-      sourceSymbol: "7203.jp",
-      symbolId: "jp-7203",
-      volume: 28430000,
-    },
-    {
-      close: 163,
-      currency: "JPY",
-      date: "2026-04-17",
-      high: 166,
-      id: "jp-9432-2026-04-17",
-      low: 160,
-      open: 162,
-      region: "JP",
-      sourceSymbol: "9432.jp",
-      symbolId: "jp-9432",
-      volume: 181000000,
-    },
-  ],
-  exchangeRates: [
-    {
-      baseCurrency: "USD",
-      close: 154.42,
-      date: "2026-04-17",
-      id: "USDJPY-2026-04-17",
-      pair: "USDJPY",
-      quoteCurrency: "JPY",
-    },
-  ],
-  holdings: [
-    {
-      averagePrice: 2840,
-      currency: "JPY",
-      id: "holding-jp-7203",
-      quantity: 200,
-      symbolId: "jp-7203",
-      updatedAt: "2026-04-17T15:00:00+09:00",
-    },
-  ],
-  symbols: [
-    {
-      code: "7203",
-      currency: "JPY",
-      id: "jp-7203",
-      name: "トヨタ自動車",
-      region: "JP",
-      source: "stooq",
-      sourceSymbol: "7203.jp",
-    },
-    {
-      code: "9432",
-      currency: "JPY",
-      id: "jp-9432",
-      name: "日本電信電話",
-      region: "JP",
-      source: "stooq",
-      sourceSymbol: "9432.jp",
-    },
-  ],
-};
+export { dummyStockPrepSnapshot } from "../data/seedSnapshot";
 
 function migrateStockPrepDb(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains(stockPrepStores.symbols)) {
@@ -244,6 +187,10 @@ function migrateStockPrepDb(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains(stockPrepStores.cash)) {
     db.createObjectStore(stockPrepStores.cash, { keyPath: "currency" });
   }
+
+  if (!db.objectStoreNames.contains(stockPrepStores.syncState)) {
+    db.createObjectStore(stockPrepStores.syncState, { keyPath: "id" });
+  }
 }
 
 async function clearAllStores(db: IDBDatabase): Promise<void> {
@@ -252,6 +199,53 @@ async function clearAllStores(db: IDBDatabase): Promise<void> {
 
   for (const storeName of Object.values(stockPrepStores)) {
     transaction.objectStore(storeName).clear();
+  }
+
+  await done;
+}
+
+async function replaceMarketDataSnapshot(
+  db: IDBDatabase,
+  snapshot: MarketDataSnapshot,
+): Promise<void> {
+  const transaction = db.transaction(
+    [stockPrepStores.symbols, stockPrepStores.dailyPrices, stockPrepStores.exchangeRates],
+    "readwrite",
+  );
+  const done = transactionDone(transaction);
+
+  transaction.objectStore(stockPrepStores.symbols).clear();
+  transaction.objectStore(stockPrepStores.dailyPrices).clear();
+  transaction.objectStore(stockPrepStores.exchangeRates).clear();
+
+  for (const symbol of snapshot.symbols) {
+    transaction.objectStore(stockPrepStores.symbols).put(symbol);
+  }
+
+  for (const dailyPrice of snapshot.dailyPrices) {
+    transaction.objectStore(stockPrepStores.dailyPrices).put(dailyPrice);
+  }
+
+  for (const exchangeRate of snapshot.exchangeRates) {
+    transaction.objectStore(stockPrepStores.exchangeRates).put(exchangeRate);
+  }
+
+  await done;
+}
+
+async function replaceHoldingsSnapshot(db: IDBDatabase, snapshot: HoldingsSnapshot): Promise<void> {
+  const transaction = db.transaction([stockPrepStores.holdings, stockPrepStores.cash], "readwrite");
+  const done = transactionDone(transaction);
+
+  transaction.objectStore(stockPrepStores.holdings).clear();
+  transaction.objectStore(stockPrepStores.cash).clear();
+
+  for (const holding of snapshot.holdings) {
+    transaction.objectStore(stockPrepStores.holdings).put(holding);
+  }
+
+  for (const cashBalance of snapshot.cashBalances) {
+    transaction.objectStore(stockPrepStores.cash).put(cashBalance);
   }
 
   await done;

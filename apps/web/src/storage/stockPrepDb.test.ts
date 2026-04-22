@@ -7,6 +7,7 @@ import type {
   DailyPriceBar,
   ExchangeRateBar,
   PortfolioHolding,
+  StoredSyncState,
   StoredStockSymbol,
 } from "@stock-prep/shared";
 
@@ -83,12 +84,18 @@ describe("stockPrepDb", () => {
       currency: "JPY",
       updatedAt: "2026-04-17T15:00:00+09:00",
     };
+    const syncState: StoredSyncState = {
+      datasetVersion: "server-market-v1",
+      id: "market-data",
+      syncedAt: "2026-04-17T15:35:00+09:00",
+    };
 
     await repository.putSymbol(symbol);
     await repository.putDailyPrice(dailyPrice);
     await repository.putExchangeRate(exchangeRate);
     await repository.putHolding(holding);
     await repository.putCashBalance(cashBalance);
+    await repository.putSyncState(syncState);
 
     await expect(repository.getSymbol("jp-7203")).resolves.toEqual(symbol);
     await expect(repository.getSymbolByCodeRegion("7203", "JP")).resolves.toEqual(symbol);
@@ -96,6 +103,7 @@ describe("stockPrepDb", () => {
     await expect(repository.getExchangeRate("USDJPY-2026-04-17")).resolves.toEqual(exchangeRate);
     await expect(repository.getHolding("holding-jp-7203")).resolves.toEqual(holding);
     await expect(repository.getCashBalance("JPY")).resolves.toEqual(cashBalance);
+    await expect(repository.getSyncState("market-data")).resolves.toEqual(syncState);
   });
 
   it("saves and loads the dummy snapshot", async () => {
@@ -123,6 +131,30 @@ describe("stockPrepDb", () => {
       exchangeRates: [],
       holdings: [],
       symbols: [],
+    });
+  });
+
+  it("replaces market data and holdings snapshots store by store", async () => {
+    const repository = createStockPrepDbRepository(db);
+
+    await saveDummyStockPrepData(repository);
+
+    await repository.replaceMarketDataSnapshot({
+      dailyPrices: [dummyStockPrepSnapshot.dailyPrices[1]!],
+      exchangeRates: [],
+      symbols: [dummyStockPrepSnapshot.symbols[1]!],
+    });
+    await repository.replaceHoldingsSnapshot({
+      cashBalances: [],
+      holdings: [],
+    });
+
+    await expect(loadStockPrepSnapshot(repository)).resolves.toEqual({
+      cashBalances: [],
+      dailyPrices: [dummyStockPrepSnapshot.dailyPrices[1]!],
+      exchangeRates: [],
+      holdings: [],
+      symbols: [dummyStockPrepSnapshot.symbols[1]!],
     });
   });
 });

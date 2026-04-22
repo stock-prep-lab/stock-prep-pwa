@@ -11,6 +11,9 @@ import {
   loadStockPrepSnapshot,
   openStockPrepDb,
 } from "../storage/stockPrepDb";
+import { notifyStockPrepDataChanged } from "./dataSyncEvents";
+import { persistHoldingsPayload } from "./dataSyncPersistence";
+import { upsertHolding } from "./syncApi";
 
 export type PortfolioLoadResult = {
   dailyPriceCount: number;
@@ -124,18 +127,18 @@ export async function saveHoldingToIndexedDb({
     if (!symbol) {
       throw new Error("保存対象の銘柄が見つかりませんでした。");
     }
-
-    await repository.putHolding({
-      averagePrice,
-      currency: symbol.currency,
-      id: `holding-${symbol.id}`,
-      quantity,
-      symbolId: symbol.id,
-      updatedAt: new Date().toISOString(),
-    });
   } finally {
     db.close();
   }
+
+  const payload = await upsertHolding({
+    averagePrice,
+    quantity,
+    symbolId,
+  });
+
+  await persistHoldingsPayload(payload);
+  notifyStockPrepDataChanged();
 }
 
 function findLatestPrice(dailyPrices: DailyPriceBar[], symbolId: string): DailyPriceBar | null {

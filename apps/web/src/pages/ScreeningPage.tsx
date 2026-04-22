@@ -7,6 +7,7 @@ import {
   loadScreeningCandidatesFromIndexedDb,
   type ScreeningCandidatesLoadResult,
 } from "../data/screeningCandidates";
+import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 
 type ScreeningCondition = {
   label: string;
@@ -71,24 +72,30 @@ export function ScreeningPage() {
   useEffect(() => {
     let isMounted = true;
 
-    loadScreeningCandidatesFromIndexedDb()
-      .then((result) => {
-        if (isMounted) {
-          setScreeningState({ result, status: "loaded" });
-        }
-      })
-      .catch((error: unknown) => {
-        if (isMounted) {
-          setScreeningState({
-            error:
-              error instanceof Error ? error.message : "スクリーニングデータを読めませんでした。",
-            status: "error",
-          });
-        }
-      });
+    const loadCandidates = () => {
+      void loadScreeningCandidatesFromIndexedDb()
+        .then((result) => {
+          if (isMounted) {
+            setScreeningState({ result, status: "loaded" });
+          }
+        })
+        .catch((error: unknown) => {
+          if (isMounted) {
+            setScreeningState({
+              error:
+                error instanceof Error ? error.message : "スクリーニングデータを読めませんでした。",
+              status: "error",
+            });
+          }
+        });
+    };
+
+    loadCandidates();
+    const unsubscribe = subscribeToStockPrepDataChanged(loadCandidates);
 
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, []);
 

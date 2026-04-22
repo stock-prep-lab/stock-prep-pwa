@@ -13,6 +13,7 @@ import {
   type PurchaseSimulationLoadResult,
   type PurchaseSimulationTarget,
 } from "../data/purchaseSimulationData";
+import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 
 type SimulationState =
   | {
@@ -48,34 +49,41 @@ export function SimulationPage() {
   useEffect(() => {
     let isMounted = true;
 
-    setSimulationState({ status: "loading" });
-    loadPurchaseSimulationTargetFromIndexedDb(symbolCode)
-      .then((result) => {
-        if (!isMounted) {
-          return;
-        }
+    const loadSimulation = () => {
+      setSimulationState({ status: "loading" });
 
-        setSimulationState({ result, status: "loaded" });
+      void loadPurchaseSimulationTargetFromIndexedDb(symbolCode)
+        .then((result) => {
+          if (!isMounted) {
+            return;
+          }
 
-        if (result.target) {
-          setPurchasePriceInput(formatInputNumber(result.target.suggestedPrice ?? 0));
-          setQuantityInput(formatInputNumber(result.target.suggestedQuantity ?? 0));
-        }
-      })
-      .catch((error: unknown) => {
-        if (isMounted) {
-          setSimulationState({
-            error:
-              error instanceof Error
-                ? error.message
-                : "購入シミュレーションを読み込めませんでした。",
-            status: "error",
-          });
-        }
-      });
+          setSimulationState({ result, status: "loaded" });
+
+          if (result.target) {
+            setPurchasePriceInput(formatInputNumber(result.target.suggestedPrice ?? 0));
+            setQuantityInput(formatInputNumber(result.target.suggestedQuantity ?? 0));
+          }
+        })
+        .catch((error: unknown) => {
+          if (isMounted) {
+            setSimulationState({
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "購入シミュレーションを読み込めませんでした。",
+              status: "error",
+            });
+          }
+        });
+    };
+
+    loadSimulation();
+    const unsubscribe = subscribeToStockPrepDataChanged(loadSimulation);
 
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, [symbolCode]);
 

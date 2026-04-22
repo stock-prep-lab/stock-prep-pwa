@@ -10,6 +10,7 @@ import { ScreeningPage } from "./pages/ScreeningPage";
 import { SearchPage } from "./pages/SearchPage";
 import { SimulationPage } from "./pages/SimulationPage";
 import { StockDetailPage } from "./pages/StockDetailPage";
+import { useStartupDataSync } from "./data/useStartupDataSync";
 
 type AppRoute = {
   id: string;
@@ -101,6 +102,8 @@ const secondaryRoutes = [
 const allRoutes = [...primaryRoutes, ...secondaryRoutes];
 
 function AppShell() {
+  useStartupDataSync();
+
   return (
     <div className="min-h-dvh bg-zinc-50 text-zinc-950">
       <header className="border-b border-zinc-200 bg-white">
