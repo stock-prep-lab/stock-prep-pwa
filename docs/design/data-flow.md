@@ -6,13 +6,13 @@
 ## 日次更新フロー
 
 1. 管理者が Stooq から市場別 bulk ZIP をダウンロードする
-2. 管理画面から日本 / 米国 / 英国 / 香港 / 為替の対象 ZIP をアップロードする
-3. Function が ZIP を展開し、daily ASCII `.txt` を解析する
-4. 株式 / ETF / REIT のみを保存対象にする
+2. 管理画面から日本 / 米国 / 英国 / 香港 / world(為替) の対象 ZIP をアップロードする
+3. Function が ZIP を展開し、対象カテゴリ配下を再帰的に走査して daily ASCII `.txt` を収集する
+4. 当面は株式 / ETF / 為替を保存対象にし、`lse stocks intl` と `hkex reits` は取り込み対象から外す
 5. 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリを除外する
-6. 為替は `USDJPY` / `GBPJPY` / `HKDJPY` を扱う
+6. `world/currencies` から JPY 換算に必要な為替ペアを抽出する
 7. データ整形
-8. 市場 / 商品種別 / 通貨 / sourceSymbol を付与
+8. `stooqCategory` と、フォルダ名で安全に判定できる範囲の正規化済み `securityType`、市場、通貨、`sourceSymbol` を付与
 9. 正規化済み価格履歴を R2 の `runs/{runId}/...` に保存
 10. 画面表示用の最新価格、計算済み指標、スクリーニング結果を Supabase に保存
 11. R2 manifest を検証し、成功したら latest manifest と dataset version を差し替える
@@ -26,7 +26,7 @@
 
 1. 管理画面が市場別の import Function を起動する
 2. Function がアップロード済み ZIP を受け取る
-3. Function が株式 / ETF / REIT のみを抽出し、価格履歴を圧縮ファイルに正規化
+3. Function が対象カテゴリ配下を再帰的に探索し、株式 / ETF / 為替の `.txt` を抽出する
 4. Function が価格履歴ファイルを R2 の更新 run に保存
 5. Function が画面表示用の最新値、計算済み指標、ランキング、R2 manifest 参照を Supabase に保存
 6. Function が import job 状態を Supabase に保存する
