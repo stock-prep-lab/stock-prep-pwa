@@ -478,11 +478,13 @@
 
 ### 対象
 - 最新データ配信 API
+- dataset version 取得 API
 - Supabase / Neon などサーバー側 DB への接続方針
 - Cloudflare R2 への価格履歴ファイル参照方針
 - サーバー側に保存された市場データを PWA / Web へ返す API
 - PWA / Web 起動時に、その端末の IndexedDB へキャッシュするための差分取得
-- dataset version 確認 API
+- dataset version とローカル version を比較して同期要否を返す API 境界
+- 起動時 / 前面復帰時に dataset version を見て同期を開始するクライアント導線
 - 保有情報取得 API
 - 保有情報更新 API
 - 保有情報をサーバー側保存先へ保存し、端末の IndexedDB キャッシュへ反映する同期導線
@@ -497,8 +499,10 @@
 ### 完了条件
 - Functions が利用できる
 - 市場データを R2 / Supabase から取得して画面へ返す API 境界ができる
+- dataset version を返し、端末側が再同期要否を判定できる
 - 保有情報を別端末でも取得できる前提の API 境界ができる
 - 起動時に API から IndexedDB へキャッシュする流れが実装できる
+- 起動時または前面復帰時に version を見て必要時だけ同期する流れが説明できる
 - MVP 用 DB / R2 候補と必要な環境変数が整理されている
 
 ### テスト / 確認観点
@@ -512,6 +516,9 @@
 ## Slice 17: 手動 bulk 取り込み / R2・Supabase 更新
 
 ### 対象
+- 管理画面の ZIP アップロード導線
+- 市場選択、日本 / 米国 / 英国 / 香港 / 為替ごとの ZIP 入力 UI
+- アップロード後に import job 状態を確認する管理 UI
 - 手動 bulk ZIP アップロード処理
 - 日本 / 米国 / 英国 / 香港 / 為替の市場別 import job
 - ZIP 受け取りからサーバー保存までの実行境界
@@ -530,6 +537,7 @@
 
 ### 完了条件
 - 管理画面から市場別 ZIP を取り込める
+- アップロード対象市場、実行中、成功、失敗が管理画面で分かる
 - R2 の latest manifest が成功時のみ差し替わる
 - Supabase の銘柄マスタ / 最新値 / import job 状態 / manifest 参照が画面表示用に更新される
 - ZIP を再アップロードすれば市場単位で再取り込みできる
