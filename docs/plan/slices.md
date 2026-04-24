@@ -521,7 +521,7 @@
 - 市場別 ZIP 配下の対象カテゴリを再帰的に走査して `.txt` を収集する前提整理
 - `stocks` / `etfs` / `currencies` を保存対象カテゴリにする前提整理
 - フォルダ名から `stooqCategory` を保持し、アプリ内の `securityType` へ正規化する方針整理
-- `lse stocks intl` と `hkex reits` を当面の取り込み対象外にする方針整理
+- `lse stocks intl` と `hkex reits` を MVP の取り込み対象外にする方針整理
 - 実 ZIP fixture で確認したい観点の整理
 
 ### 非対象
@@ -534,7 +534,7 @@
 - MVP で扱う入力 ZIP が 5 系統で明記されている
 - 対象カテゴリ配下を再帰走査して `.txt` を拾う前提が明記されている
 - `stooqCategory` と `securityType` を分けて保持する理由が明記されている
-- `lse stocks intl` と `hkex reits` を当面の取り込み対象外にすることが明記されている
+- `lse stocks intl` と `hkex reits` を MVP の取り込み対象外にすることが明記されている
 - 日本 / 米国 / 英国 / 香港 / world の fixture で追加確認する観点が明記されている
 
 ### テスト / 確認観点
