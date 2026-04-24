@@ -513,15 +513,47 @@
 
 ---
 
+## Slice 16.5: Stooq bulk 入力仕様の確定
+
+### 対象
+- Stooq bulk の MVP 入力を `jp` / `us` / `uk` / `hk` / `world` の 5 ZIP 前提で整理
+- `world` ZIP を為替入力元とし、`currencies` 配下を対象候補にする方針整理
+- 市場別 ZIP 配下の対象カテゴリを再帰的に走査して `.txt` を収集する前提整理
+- `stocks` / `etfs` / `currencies` を保存対象カテゴリにする前提整理
+- フォルダ名から `stooqCategory` を保持し、アプリ内の `securityType` へ正規化する方針整理
+- `lse stocks intl` と `hkex reits` を当面の取り込み対象外にする方針整理
+- 実 ZIP fixture で確認したい観点の整理
+
+### 非対象
+- 実際の ZIP アップロード UI
+- parser の本実装
+- R2 / Supabase への保存
+- 画面モックの回収
+
+### 完了条件
+- MVP で扱う入力 ZIP が 5 系統で明記されている
+- 対象カテゴリ配下を再帰走査して `.txt` を拾う前提が明記されている
+- `stooqCategory` と `securityType` を分けて保持する理由が明記されている
+- `lse stocks intl` と `hkex reits` を当面の取り込み対象外にすることが明記されている
+- 日本 / 米国 / 英国 / 香港 / world の fixture で追加確認する観点が明記されている
+
+### テスト / 確認観点
+- docs-only の場合は文書レビュー観点を PR に記載
+
+---
+
 ## Slice 17: 手動 bulk 取り込み / R2・Supabase 更新
 
 ### 対象
 - 管理画面の ZIP アップロード導線
-- 市場選択、日本 / 米国 / 英国 / 香港 / 為替ごとの ZIP 入力 UI
+- 市場選択、日本 / 米国 / 英国 / 香港 / world(為替) ごとの ZIP 入力 UI
 - アップロード後に import job 状態を確認する管理 UI
 - 手動 bulk ZIP アップロード処理
-- 日本 / 米国 / 英国 / 香港 / 為替の市場別 import job
+- 日本 / 米国 / 英国 / 香港 / world(為替) の市場別 import job
 - ZIP 受け取りからサーバー保存までの実行境界
+- 対象カテゴリ配下の再帰走査による `.txt` 収集
+- `stooqCategory` から `securityType` への正規化
+- MVP 対象外カテゴリを除外する商品種別処理
 - 正規化済み価格履歴ファイルの Cloudflare R2 保存
 - latest manifest による更新 run 管理
 - 銘柄マスタ、最新価格、import job 状態、R2 manifest 参照の Supabase 保存
@@ -538,6 +570,7 @@
 ### 完了条件
 - 管理画面から市場別 ZIP を取り込める
 - アップロード対象市場、実行中、成功、失敗が管理画面で分かる
+- 対象カテゴリ直下と下位フォルダのどちらに `.txt` があっても収集できる
 - R2 の latest manifest が成功時のみ差し替わる
 - Supabase の銘柄マスタ / 最新値 / import job 状態 / manifest 参照が画面表示用に更新される
 - ZIP を再アップロードすれば市場単位で再取り込みできる
@@ -779,3 +812,35 @@
   - 検索 → 銘柄詳細
   - スクリーニング → 銘柄詳細
   - ポートフォリオ → リバランス提案 → 購入シミュレーション
+
+---
+
+## Slice 26: ローカル開発環境の Docker 分離
+
+### 対象
+- Docker Compose によるローカル開発環境の追加
+- Supabase の代替となるローカル DB の用意
+- Cloudflare R2 の代替となるローカル object storage の用意
+- Vercel Functions の代替となるローカル API 実行環境の整理
+- ローカル環境用の env 切り替え
+- ローカル import / API / 画面確認フローの文書化
+
+### 非対象
+- MVP 本線の新機能追加
+- 本番クラウド構成の変更
+- 新しい画面追加
+- Push 通知や PWA 機能の拡張
+
+### 完了条件
+- Docker を使ってローカルだけで DB / object storage / API を起動できる
+- ローカル import 処理と最新データ API が、クラウド環境を触らずに確認できる
+- ローカル env とクラウド env の切り替え方法が明記されている
+- 本番データを汚さずに主要導線を確認できる
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- Docker 起動手順の確認
+- ローカル import から画面表示までの手動確認
+- クラウド環境を使わずに主要 API が応答することを確認

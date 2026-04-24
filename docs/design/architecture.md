@@ -60,7 +60,7 @@
 - `apps/web`: PWA 本体
 - `packages/shared`: 共通型 / 定数 / schema
 - `packages/domain`: 計算ロジック
-- `vercel/functions`: API / import / push
+- `api`: Vercel Functions の entrypoint
 - `docs`: 要件 / 設計 / 計画
 
 ## フロント
@@ -85,6 +85,14 @@
 - 手動 bulk 取り込み
 - 必要な集計結果の返却
 
+### Slice 16 時点の API 境界
+- `GET /api/dataset-version`: ローカルの `dataset version` と比較し、再同期要否を返す
+- `GET /api/market-data`: 銘柄マスタ、日足、為替、`dataset version` を返す
+- `GET /api/holdings`: サーバー側の保有情報と現金を返す
+- `PUT /api/holdings`: 保有更新を保存し、更新後の保有 payload を返す
+- 開発中は Vite の `/api/*` middleware が同じ handler を使い、Vercel 本番では `api/*.ts` を entrypoint にする
+- Supabase / R2 の本接続は Slice 17 以降で差し替え、Slice 16 では API 契約と IndexedDB 同期導線を先に固める
+
 ### サーバー側保存先
 - 市場データ、銘柄マスタ、為替レート、保有情報はサーバー側の永続保存先を使う
 - 重い価格履歴ファイルは Cloudflare R2 に保存する
@@ -94,6 +102,7 @@
 - import job 状態は、管理画面で取り込み成否や最新 dataset version を確認するために使う
 - DB 候補は Supabase Postgres を第一候補、Neon Postgres を代替候補として比較して決める
 - 大きな bulk data の原本や中間ファイルは、必要に応じて R2 に一時保存する
+- 想定する環境変数は `STOCK_PREP_SUPABASE_URL`、`STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY`、`STOCK_PREP_R2_ACCOUNT_ID`、`STOCK_PREP_R2_ACCESS_KEY_ID`、`STOCK_PREP_R2_SECRET_ACCESS_KEY`、`STOCK_PREP_R2_BUCKET`
 
 ### 外部データ
 - Stooq daily ASCII bulk data を第一候補にする
@@ -101,10 +110,17 @@
 - 投資対象商品は株式 / ETF / REIT を MVP の universe に含める
 - 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリは MVP では保存対象外にする
 - 管理者が Stooq から市場別 ZIP を手動取得し、管理画面からアップロードする
+- MVP の入力 ZIP は `jp` / `us` / `uk` / `hk` / `world` の 5 系統を第一候補にする
+- `world` ZIP は為替入力元として扱い、`currencies` 配下から JPY 換算に必要な通貨ペアを抽出する
 - bulk data は `.txt` 形式の解析を行う
+- ZIP 展開後は対象カテゴリ配下を再帰的に走査し、下位フォルダを含めて `.txt` を収集する
+- 商品種別の一次判定には Stooq のフォルダ名を使い、元分類は `stooqCategory` として保持する
+- アプリ内の表示と計算には正規化済み `securityType` を使い、当面は `stock` / `etf` / `currency` を基本候補として扱う
+- `securityType` はフォルダ名で安全に判定できるものから順に付与し、曖昧な市場やカテゴリは fixture 確認後に確定する
+- `lse stocks intl` と `hkex reits` は存在確認済みだが、当面は MVP の取り込み対象から外す
 - 外貨建て保有の JPY 換算用に `USDJPY` / `GBPJPY` / `HKDJPY` の為替日次も扱う
 - 市場ごとの Stooq symbol は銘柄マスタで管理する
-- Stooq 側のカテゴリとアプリ内の商品種別は分けて保持し、REIT が独立カテゴリにない市場では銘柄マスタで分類する
+- Stooq 側のカテゴリとアプリ内の商品種別は分けて保持し、MVP 非対象カテゴリは将来拡張まで保留する
 - Stooq 側で取得できない銘柄は、未対応状態として保存する
 - 空の価格ファイルはエラーではなく、価格データなし状態として保存する
 

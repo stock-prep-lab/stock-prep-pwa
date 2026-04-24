@@ -7,6 +7,7 @@ import {
   loadRebalancePlanFromIndexedDb,
   type RebalanceLoadResult,
 } from "../data/portfolioRebalanceData";
+import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 
 type SummaryMetric = {
   label: string;
@@ -55,24 +56,32 @@ export function RebalancePage() {
   useEffect(() => {
     let isMounted = true;
 
-    loadRebalancePlanFromIndexedDb()
-      .then((result) => {
-        if (isMounted) {
-          setRebalanceState({ result, status: "loaded" });
-        }
-      })
-      .catch((error: unknown) => {
-        if (isMounted) {
-          setRebalanceState({
-            error:
-              error instanceof Error ? error.message : "リバランス提案を読み込めませんでした。",
-            status: "error",
-          });
-        }
-      });
+    const loadRebalance = () => {
+      void loadRebalancePlanFromIndexedDb()
+        .then((result) => {
+          if (isMounted) {
+            setRebalanceState({ result, status: "loaded" });
+          }
+        })
+        .catch((error: unknown) => {
+          if (isMounted) {
+            setRebalanceState({
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "リバランス提案を読み込めませんでした。",
+              status: "error",
+            });
+          }
+        });
+    };
+
+    loadRebalance();
+    const unsubscribe = subscribeToStockPrepDataChanged(loadRebalance);
 
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, []);
 

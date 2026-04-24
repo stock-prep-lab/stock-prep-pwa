@@ -12,6 +12,7 @@ import {
   loadPortfolioFromIndexedDb,
   type PortfolioLoadResult,
 } from "../data/portfolioRebalanceData";
+import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 
 type PortfolioMetric = {
   label: string;
@@ -55,24 +56,30 @@ export function PortfolioPage() {
   useEffect(() => {
     let isMounted = true;
 
-    loadPortfolioFromIndexedDb()
-      .then((result) => {
-        if (isMounted) {
-          setPortfolioState({ result, status: "loaded" });
-        }
-      })
-      .catch((error: unknown) => {
-        if (isMounted) {
-          setPortfolioState({
-            error:
-              error instanceof Error ? error.message : "ポートフォリオを読み込めませんでした。",
-            status: "error",
-          });
-        }
-      });
+    const loadPortfolio = () => {
+      void loadPortfolioFromIndexedDb()
+        .then((result) => {
+          if (isMounted) {
+            setPortfolioState({ result, status: "loaded" });
+          }
+        })
+        .catch((error: unknown) => {
+          if (isMounted) {
+            setPortfolioState({
+              error:
+                error instanceof Error ? error.message : "ポートフォリオを読み込めませんでした。",
+              status: "error",
+            });
+          }
+        });
+    };
+
+    loadPortfolio();
+    const unsubscribe = subscribeToStockPrepDataChanged(loadPortfolio);
 
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, []);
 

@@ -57,3 +57,43 @@ export type CashBalance = {
   amount: number;
   updatedAt: string;
 };
+
+export type StockPrepSnapshot = {
+  cashBalances: CashBalance[];
+  dailyPrices: DailyPriceBar[];
+  exchangeRates: ExchangeRateBar[];
+  holdings: PortfolioHolding[];
+  symbols: StoredStockSymbol[];
+};
+
+export type SyncStateId = "holdings" | "market-data";
+
+export type StoredSyncState = {
+  datasetVersion: string;
+  id: SyncStateId;
+  syncedAt: string;
+};
+
+export type MarketDataPayload = Pick<
+  StockPrepSnapshot,
+  "dailyPrices" | "exchangeRates" | "symbols"
+> & {
+  datasetVersion: string;
+  generatedAt: string;
+};
+
+export type DatasetVersionPayload = {
+  datasetVersion: string;
+  generatedAt: string;
+  shouldSync: boolean;
+};
+
+export type HoldingsPayload = Pick<StockPrepSnapshot, "cashBalances" | "holdings"> & {
+  updatedAt: string;
+};
+
+export type UpsertHoldingRequest = {
+  averagePrice: number;
+  quantity: number;
+  symbolId: string;
+};
