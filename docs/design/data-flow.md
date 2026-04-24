@@ -8,7 +8,7 @@
 1. 管理者が Stooq から市場別 bulk ZIP をダウンロードする
 2. 管理画面から日本 / 米国 / 英国 / 香港 / world(為替) の対象 ZIP をアップロードする
 3. Function が ZIP を展開し、対象カテゴリ配下を再帰的に走査して daily ASCII `.txt` を収集する
-4. 当面は株式 / ETF / 為替を保存対象にし、`lse stocks intl` と `hkex reits` は取り込み対象から外す
+4. MVP では株式 / ETF / 為替を保存対象にし、`lse stocks intl` と `hkex reits` は取り込み対象から外す
 5. 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリを除外する
 6. `world/currencies` から JPY 換算に必要な為替ペアを抽出する
 7. データ整形

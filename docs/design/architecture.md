@@ -107,7 +107,7 @@
 ### 外部データ
 - Stooq daily ASCII bulk data を第一候補にする
 - 取得対象は日本株を主軸に、米国株、英国株、香港株も同じ日足取り込み基盤で扱う
-- 投資対象商品は株式 / ETF / REIT を MVP の universe に含める
+- 投資対象商品は MVP では 株式 / ETF / 為替 を扱い、`lse stocks intl` と `hkex reits` は取り込み対象から外す
 - 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリは MVP では保存対象外にする
 - 管理者が Stooq から市場別 ZIP を手動取得し、管理画面からアップロードする
 - MVP の入力 ZIP は `jp` / `us` / `uk` / `hk` / `world` の 5 系統を第一候補にする
@@ -115,9 +115,9 @@
 - bulk data は `.txt` 形式の解析を行う
 - ZIP 展開後は対象カテゴリ配下を再帰的に走査し、下位フォルダを含めて `.txt` を収集する
 - 商品種別の一次判定には Stooq のフォルダ名を使い、元分類は `stooqCategory` として保持する
-- アプリ内の表示と計算には正規化済み `securityType` を使い、当面は `stock` / `etf` / `currency` を基本候補として扱う
-- `securityType` はフォルダ名で安全に判定できるものから順に付与し、曖昧な市場やカテゴリは fixture 確認後に確定する
-- `lse stocks intl` と `hkex reits` は存在確認済みだが、当面は MVP の取り込み対象から外す
+- アプリ内の表示と計算には正規化済み `securityType` を使い、MVP では `stock` / `etf` / `currency` を基本候補として扱う
+- `securityType` はフォルダ名で安全に判定できる範囲から付与し、曖昧な市場やカテゴリは fixture 確認後に最終決定する
+- `lse stocks intl` と `hkex reits` は存在確認済みだが、MVP では取り込み対象から外す
 - 外貨建て保有の JPY 換算用に `USDJPY` / `GBPJPY` / `HKDJPY` の為替日次も扱う
 - 市場ごとの Stooq symbol は銘柄マスタで管理する
 - Stooq 側のカテゴリとアプリ内の商品種別は分けて保持し、MVP 非対象カテゴリは将来拡張まで保留する
