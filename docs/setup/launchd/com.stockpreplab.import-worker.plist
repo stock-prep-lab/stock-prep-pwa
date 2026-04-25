@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.stockpreplab.import-worker</string>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>-lc</string>
+      <string>cd __REPO_ROOT__ &amp;&amp; __PNPM_BIN__ import:worker</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true />
+
+    <key>StandardOutPath</key>
+    <string>__LOG_DIR__/stock-prep-import-worker.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__LOG_DIR__/stock-prep-import-worker.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>STOCK_PREP_SUPABASE_URL</key>
+      <string>__SUPABASE_URL__</string>
+      <key>STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY</key>
+      <string>__SUPABASE_SERVICE_ROLE_KEY__</string>
+      <key>STOCK_PREP_R2_ACCOUNT_ID</key>
+      <string>__R2_ACCOUNT_ID__</string>
+      <key>STOCK_PREP_R2_ACCESS_KEY_ID</key>
+      <string>__R2_ACCESS_KEY_ID__</string>
+      <key>STOCK_PREP_R2_SECRET_ACCESS_KEY</key>
+      <string>__R2_SECRET_ACCESS_KEY__</string>
+      <key>STOCK_PREP_R2_BUCKET</key>
+      <string>__R2_BUCKET__</string>
+    </dict>
+  </dict>
+</plist>

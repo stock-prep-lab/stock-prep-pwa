@@ -1,6 +1,6 @@
 export type ImportScopeId = "FX" | "HK" | "JP" | "UK" | "US";
 
-export type ImportJobStatus = "failed" | "running" | "succeeded";
+export type ImportJobStatus = "completed" | "failed" | "processing" | "queued";
 
 export type ImportJobRecord = {
   id: string;

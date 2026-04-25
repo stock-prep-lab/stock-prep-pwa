@@ -325,11 +325,21 @@ function JobMetric({ label, value }: { label: string; value: string }) {
 
 function StatusPill({ status }: { status?: ImportJobRecord["status"] }) {
   const label =
-    status === "running" ? "実行中" : status === "succeeded" ? "成功" : status === "failed" ? "失敗" : "未実行";
+    status === "queued"
+      ? "受付済み"
+      : status === "processing"
+        ? "処理中"
+        : status === "completed"
+          ? "完了"
+          : status === "failed"
+            ? "失敗"
+            : "未実行";
   const className =
-    status === "running"
+    status === "queued"
+      ? "bg-sky-50 text-sky-700"
+      : status === "processing"
       ? "bg-amber-50 text-amber-700"
-      : status === "succeeded"
+      : status === "completed"
         ? "bg-emerald-50 text-emerald-700"
         : status === "failed"
           ? "bg-rose-50 text-rose-700"
