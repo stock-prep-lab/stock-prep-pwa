@@ -5,6 +5,7 @@ import { dummyStockPrepSnapshot } from "../data/seedSnapshot";
 import type { MarketDataPayload } from "@stock-prep/shared";
 
 import {
+  buildLatestSummaryPayload,
   createEmptyMarketDataPayload,
   extractStooqBulkFilesFromZip,
   importBulkScopeFromZip,
@@ -106,6 +107,98 @@ describe("stockPrepImport", () => {
         pair: "USDJPY",
       }),
     ]);
+  });
+
+  it("builds a latest summary from the most recent bars only", () => {
+    const summary = buildLatestSummaryPayload({
+      dailyPrices: [
+        {
+          close: 110,
+          currency: "JPY",
+          date: "2026-04-17",
+          high: 111,
+          id: "jp-7203-2026-04-17",
+          low: 109,
+          open: 109,
+          region: "JP",
+          sourceSymbol: "7203.jp",
+          symbolId: "jp-7203",
+          volume: 10,
+        },
+        {
+          close: 115,
+          currency: "JPY",
+          date: "2026-04-18",
+          high: 116,
+          id: "jp-7203-2026-04-18",
+          low: 114,
+          open: 114,
+          region: "JP",
+          sourceSymbol: "7203.jp",
+          symbolId: "jp-7203",
+          volume: 12,
+        },
+      ],
+      datasetVersion: "market-data-2026-04-18",
+      exchangeRates: [
+        {
+          baseCurrency: "USD",
+          close: 150,
+          date: "2026-04-17",
+          id: "USDJPY-2026-04-17",
+          pair: "USDJPY",
+          quoteCurrency: "JPY",
+        },
+        {
+          baseCurrency: "USD",
+          close: 151,
+          date: "2026-04-18",
+          id: "USDJPY-2026-04-18",
+          pair: "USDJPY",
+          quoteCurrency: "JPY",
+        },
+      ],
+      generatedAt: "2026-04-18T15:35:00+09:00",
+      symbols: [
+        {
+          code: "7203",
+          currency: "JPY",
+          id: "jp-7203",
+          name: "TOYOTA",
+          region: "JP",
+          securityType: "stock",
+          source: "stooq",
+          sourceSymbol: "7203.jp",
+        },
+      ],
+    });
+
+    expect(summary).toEqual({
+      datasetVersion: "market-data-2026-04-18",
+      exchangeRates: [
+        {
+          baseCurrency: "USD",
+          close: 151,
+          date: "2026-04-18",
+          pair: "USDJPY",
+          quoteCurrency: "JPY",
+        },
+      ],
+      generatedAt: "2026-04-18T15:35:00+09:00",
+      symbols: [
+        {
+          code: "7203",
+          currency: "JPY",
+          id: "jp-7203",
+          lastClose: 115,
+          lastCloseDate: "2026-04-18",
+          name: "TOYOTA",
+          region: "JP",
+          securityType: "stock",
+          sourceSymbol: "7203.jp",
+        },
+      ],
+    });
   });
 });
 

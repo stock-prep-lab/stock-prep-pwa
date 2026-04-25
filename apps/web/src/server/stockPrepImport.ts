@@ -4,6 +4,7 @@ import type {
   DailyPriceBar,
   ExchangeRateBar,
   ImportScopeId,
+  LatestSummaryPayload,
   MarketDataPayload,
   SecurityType,
   StoredStockSymbol,
@@ -40,6 +41,7 @@ export type ScreeningSnapshot = {
 export type StockPrepMarketDataManifest = {
   datasetVersion: string;
   generatedAt: string;
+  latestSummaryKey: string;
   marketDataKey: string;
   runId: string;
   scopeSummaries: Partial<Record<ImportScopeId, ScopeImportSummary>>;
@@ -98,6 +100,59 @@ export function createEmptyMarketDataPayload(): MarketDataPayload {
     exchangeRates: [],
     generatedAt: new Date(0).toISOString(),
     symbols: [],
+  };
+}
+
+export function buildLatestSummaryPayload(marketData: MarketDataPayload): LatestSummaryPayload {
+  const latestPriceBySymbolId = new Map<string, DailyPriceBar>();
+
+  for (const bar of marketData.dailyPrices) {
+    const current = latestPriceBySymbolId.get(bar.symbolId);
+
+    if (!current || bar.date > current.date) {
+      latestPriceBySymbolId.set(bar.symbolId, bar);
+    }
+  }
+
+  const latestExchangeRateByPair = new Map<ExchangeRateBar["pair"], ExchangeRateBar>();
+
+  for (const rate of marketData.exchangeRates) {
+    const current = latestExchangeRateByPair.get(rate.pair);
+
+    if (!current || rate.date > current.date) {
+      latestExchangeRateByPair.set(rate.pair, rate);
+    }
+  }
+
+  return {
+    datasetVersion: marketData.datasetVersion,
+    exchangeRates: [...latestExchangeRateByPair.values()]
+      .map((rate) => ({
+        baseCurrency: rate.baseCurrency,
+        close: rate.close,
+        date: rate.date,
+        pair: rate.pair,
+        quoteCurrency: rate.quoteCurrency,
+      }))
+      .sort((left, right) => left.pair.localeCompare(right.pair)),
+    generatedAt: marketData.generatedAt,
+    symbols: marketData.symbols
+      .map((symbol) => {
+        const latestBar = latestPriceBySymbolId.get(symbol.id);
+
+        return {
+          code: symbol.code,
+          currency: symbol.currency,
+          id: symbol.id,
+          lastClose: latestBar?.close ?? null,
+          lastCloseDate: latestBar?.date ?? null,
+          name: symbol.name,
+          region: symbol.region,
+          securityType: symbol.securityType,
+          sourceSymbol: symbol.sourceSymbol,
+        };
+      })
+      .sort(compareLatestSymbolSummary),
   };
 }
 
@@ -444,4 +499,18 @@ function compareExchangeRateBars(left: ExchangeRateBar, right: ExchangeRateBar):
 
 function compareSymbols(left: StoredStockSymbol, right: StoredStockSymbol): number {
   return left.id.localeCompare(right.id);
+}
+
+function compareLatestSymbolSummary(
+  left: LatestSummaryPayload["symbols"][number],
+  right: LatestSummaryPayload["symbols"][number],
+): number {
+  return compareByRegionCode(left.region, right.region) || left.code.localeCompare(right.code);
+}
+
+function compareByRegionCode(
+  left: LatestSummaryPayload["symbols"][number]["region"],
+  right: LatestSummaryPayload["symbols"][number]["region"],
+): number {
+  return left.localeCompare(right);
 }

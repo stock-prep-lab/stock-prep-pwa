@@ -1,22 +1,23 @@
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
+  CashBalance,
   DatasetVersionPayload,
   HoldingsPayload,
   ImportJobRecord,
   ImportJobsPayload,
   MarketDataPayload,
   PortfolioHolding,
-  StoredStockSymbol,
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
 
 import { dummyStockPrepSnapshot } from "../data/seedSnapshot";
-import type { ImportedSymbolSnapshot, StockPrepMarketDataManifest } from "./stockPrepImport";
+import type { StockPrepMarketDataManifest } from "./stockPrepImport";
 
 type StockPrepServerState = {
   holdingsPayload: HoldingsPayload;
@@ -48,29 +49,18 @@ type ImportJobRow = {
   symbol_count: number;
 };
 
-type ScreeningSnapshotRow = {
-  candidate_count: number;
-  candidates: unknown[];
-  dataset_version: string;
-  generated_at: string;
-  updated_at?: string;
+type HoldingRow = {
+  average_price: number;
+  currency: PortfolioHolding["currency"];
+  id: string;
+  quantity: number;
+  symbol_id: string;
+  updated_at: string;
 };
 
-type SymbolSnapshotRow = {
-  code: string;
-  currency: StoredStockSymbol["currency"];
-  dataset_version: string;
-  id: string;
-  import_status: ImportedSymbolSnapshot["importStatus"];
-  last_close: number | null;
-  last_close_date: string | null;
-  name: string;
-  region: StoredStockSymbol["region"];
-  security_type: StoredStockSymbol["securityType"];
-  source: StoredStockSymbol["source"];
-  source_symbol: string;
-  stooq_category: string | null;
-  unsupported_reason: string | null;
+type CashBalanceRow = {
+  amount: number;
+  currency: CashBalance["currency"];
   updated_at: string;
 };
 
@@ -99,10 +89,10 @@ const latestDatasetStateId = "latest";
 const schemaGuidePath = "docs/setup/supabase-slice17.sql";
 
 const supabaseTableNames = {
+  cashBalances: "stock_prep_cash_balances",
   datasetState: "stock_prep_dataset_state",
+  holdings: "stock_prep_holdings",
   importJobs: "stock_prep_import_jobs",
-  screeningSnapshots: "stock_prep_screening_snapshots",
-  symbolSnapshots: "stock_prep_symbol_snapshots",
 } as const;
 
 export function getStockPrepServerBackend(): StockPrepServerBackend {
@@ -232,8 +222,7 @@ function createInMemoryBackend(): StockPrepServerBackend {
 function createRemoteBackend(): StockPrepServerBackend {
   const supabase = createSupabaseAdminClient();
   const r2 = createR2Client();
-
-  return {
+  const backend: StockPrepServerBackend = {
     async getDatasetVersionPayload({ localDatasetVersion } = {}) {
       const latestState = await loadLatestDatasetState({ supabase }).catch(() => null);
 
@@ -248,7 +237,30 @@ function createRemoteBackend(): StockPrepServerBackend {
       };
     },
     async getHoldingsPayload() {
-      return createInMemoryBackend().getHoldingsPayload();
+      const [cashBalances, holdings] = await Promise.all([
+        loadCashBalances({ supabase }).catch((error) => {
+          throw wrapSupabaseSchemaError(error);
+        }),
+        loadHoldings({ supabase }).catch((error) => {
+          throw wrapSupabaseSchemaError(error);
+        }),
+      ]);
+
+      if (cashBalances.length === 0 && holdings.length === 0) {
+        return createInMemoryBackend().getHoldingsPayload();
+      }
+
+      const resolvedCashBalances =
+        cashBalances.length > 0 ? cashBalances : structuredClone(dummyStockPrepSnapshot.cashBalances);
+      const updatedAt = [...resolvedCashBalances.map((cash) => cash.updatedAt), ...holdings.map((h) => h.updatedAt)]
+        .sort((left, right) => right.localeCompare(left))
+        .at(0);
+
+      return {
+        cashBalances: resolvedCashBalances,
+        holdings,
+        updatedAt: updatedAt ?? defaultGeneratedAt,
+      };
     },
     async getImportJobsPayload() {
       const [datasetState, importJobs] = await Promise.all([
@@ -292,6 +304,7 @@ function createRemoteBackend(): StockPrepServerBackend {
     async importMarketZip({ fileName, scopeId, zipBytes }) {
       const startedAt = new Date().toISOString();
       const jobId = crypto.randomUUID();
+      const rawZipKey = `uploads/${buildRunId({ generatedAt: startedAt, scopeId })}/${sanitizePathSegment(fileName)}`;
 
       await insertImportJob({
         job: createImportJob({
@@ -307,7 +320,14 @@ function createRemoteBackend(): StockPrepServerBackend {
       });
 
       try {
-        const { createEmptyMarketDataPayload, importBulkScopeFromZip } = await import("./stockPrepImport");
+        await putBinaryObject({
+          body: zipBytes,
+          contentType: "application/zip",
+          key: rawZipKey,
+          r2,
+        });
+        const { buildLatestSummaryPayload, createEmptyMarketDataPayload, importBulkScopeFromZip } =
+          await import("./stockPrepImport");
         const [latestManifest, currentMarketData] = await Promise.all([
           loadLatestDatasetState({ supabase })
             .then(async (state) =>
@@ -332,11 +352,14 @@ function createRemoteBackend(): StockPrepServerBackend {
           zipBytes,
         });
         const runId = buildRunId({ generatedAt: startedAt, scopeId });
+        const latestSummary = buildLatestSummaryPayload(importResult.marketData);
+        const latestSummaryKey = `runs/${runId}/latest-summary.json`;
         const marketDataKey = `runs/${runId}/market-data.json`;
         const manifestKey = `runs/${runId}/manifest.json`;
         const manifest: StockPrepMarketDataManifest = {
           datasetVersion: importResult.marketData.datasetVersion,
           generatedAt: startedAt,
+          latestSummaryKey,
           marketDataKey,
           runId,
           scopeSummaries: {
@@ -348,6 +371,11 @@ function createRemoteBackend(): StockPrepServerBackend {
         await putJsonObject({
           body: importResult.marketData,
           key: marketDataKey,
+          r2,
+        });
+        await putJsonObject({
+          body: latestSummary,
+          key: latestSummaryKey,
           r2,
         });
         await putJsonObject({
@@ -366,18 +394,6 @@ function createRemoteBackend(): StockPrepServerBackend {
           marketDataKey,
           supabase,
           version: importResult.marketData.datasetVersion,
-        });
-        await persistImportedSymbols({
-          datasetVersion: importResult.marketData.datasetVersion,
-          generatedAt: startedAt,
-          scopeId,
-          supabase,
-          symbols: importResult.symbols,
-        });
-        await persistScreeningSnapshot({
-          datasetVersion: importResult.marketData.datasetVersion,
-          screening: importResult.screening,
-          supabase,
         });
 
         const completedJob: ImportJobRecord = {
@@ -423,12 +439,43 @@ function createRemoteBackend(): StockPrepServerBackend {
         }).catch(() => undefined);
 
         throw error;
+      } finally {
+        await deleteObject({
+          key: rawZipKey,
+          r2,
+        }).catch(() => undefined);
       }
     },
     async upsertHolding(request) {
-      return createInMemoryBackend().upsertHolding(request);
+      validateHoldingRequest(request);
+
+      const marketData = await this.getMarketDataPayload();
+      const symbol = marketData.symbols.find((candidate) => candidate.id === request.symbolId);
+
+      if (!symbol) {
+        throw new Error("保存対象の銘柄がサーバー側に存在しません。");
+      }
+
+      const updatedAt = new Date().toISOString();
+      await upsertHoldingRow({
+        holding: {
+          averagePrice: request.averagePrice,
+          currency: symbol.currency,
+          id: `holding-${symbol.id}`,
+          quantity: request.quantity,
+          symbolId: symbol.id,
+          updatedAt,
+        },
+        supabase,
+      }).catch((error) => {
+        throw wrapSupabaseSchemaError(error);
+      });
+
+      return this.getHoldingsPayload();
     },
   };
+
+  return backend;
 }
 
 function getInMemoryState(): StockPrepServerState {
@@ -580,6 +627,40 @@ async function loadImportJobs({
   return ((data ?? []) as ImportJobRow[]).map(mapImportJobRow);
 }
 
+async function loadHoldings({
+  supabase,
+}: {
+  supabase: SupabaseClient;
+}): Promise<PortfolioHolding[]> {
+  const { data, error } = await supabase
+    .from(supabaseTableNames.holdings)
+    .select("*")
+    .order("symbol_id", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as HoldingRow[]).map(mapHoldingRow);
+}
+
+async function loadCashBalances({
+  supabase,
+}: {
+  supabase: SupabaseClient;
+}): Promise<CashBalance[]> {
+  const { data, error } = await supabase
+    .from(supabaseTableNames.cashBalances)
+    .select("*")
+    .order("currency", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as CashBalanceRow[]).map(mapCashBalanceRow);
+}
+
 async function insertImportJob({
   job,
   supabase,
@@ -638,85 +719,14 @@ async function persistDatasetState({
   }
 }
 
-async function persistImportedSymbols({
-  datasetVersion,
-  generatedAt,
-  scopeId,
-  supabase,
-  symbols,
-}: {
-  datasetVersion: string;
-  generatedAt: string;
-  scopeId: ImportJobRecord["scopeId"];
-  supabase: SupabaseClient;
-  symbols: ImportedSymbolSnapshot[];
-}): Promise<void> {
-  if (scopeId !== "FX") {
-    const region = scopeId;
-
-    const { error: deleteError } = await supabase
-      .from(supabaseTableNames.symbolSnapshots)
-      .delete()
-      .eq("region", region);
-
-    if (deleteError) {
-      throw deleteError;
-    }
-  }
-
-  if (symbols.length === 0) {
-    return;
-  }
-
-  const rows: SymbolSnapshotRow[] = symbols.map((symbol) => ({
-    code: symbol.code,
-    currency: symbol.currency,
-    dataset_version: datasetVersion,
-    id: symbol.id,
-    import_status: symbol.importStatus,
-    last_close: symbol.lastClose,
-    last_close_date: symbol.lastCloseDate,
-    name: symbol.name,
-    region: symbol.region,
-    security_type: symbol.securityType ?? "stock",
-    source: symbol.source,
-    source_symbol: symbol.sourceSymbol,
-    stooq_category: symbol.stooqCategory,
-    unsupported_reason: symbol.unsupportedReason ?? null,
-    updated_at: generatedAt,
-  }));
-
-  const { error } = await supabase.from(supabaseTableNames.symbolSnapshots).upsert(rows);
-
-  if (error) {
-    throw error;
-  }
-}
-
-async function persistScreeningSnapshot({
-  datasetVersion,
-  screening,
+async function upsertHoldingRow({
+  holding,
   supabase,
 }: {
-  datasetVersion: string;
-  screening: {
-    candidateCount: number;
-    generatedAt: string;
-    topCandidates: unknown[];
-  };
+  holding: PortfolioHolding;
   supabase: SupabaseClient;
 }): Promise<void> {
-  const row: ScreeningSnapshotRow = {
-    candidate_count: screening.candidateCount,
-    candidates: screening.topCandidates,
-    dataset_version: datasetVersion,
-    generated_at: screening.generatedAt,
-    updated_at: screening.generatedAt,
-  };
-
-  const { error } = await supabase
-    .from(supabaseTableNames.screeningSnapshots)
-    .upsert(row);
+  const { error } = await supabase.from(supabaseTableNames.holdings).upsert(mapHoldingRecord(holding));
 
   if (error) {
     throw error;
@@ -767,6 +777,36 @@ function mapImportJobRow(row: ImportJobRow): ImportJobRecord {
   };
 }
 
+function mapHoldingRecord(holding: PortfolioHolding): HoldingRow {
+  return {
+    average_price: holding.averagePrice,
+    currency: holding.currency,
+    id: holding.id,
+    quantity: holding.quantity,
+    symbol_id: holding.symbolId,
+    updated_at: holding.updatedAt,
+  };
+}
+
+function mapHoldingRow(row: HoldingRow): PortfolioHolding {
+  return {
+    averagePrice: row.average_price,
+    currency: row.currency,
+    id: row.id,
+    quantity: row.quantity,
+    symbolId: row.symbol_id,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapCashBalanceRow(row: CashBalanceRow): CashBalance {
+  return {
+    amount: row.amount,
+    currency: row.currency,
+    updatedAt: row.updated_at,
+  };
+}
+
 async function putJsonObject({
   body,
   key,
@@ -787,6 +827,33 @@ async function putJsonObject({
       Body: JSON.stringify(body),
       Bucket: bucket,
       ContentType: "application/json; charset=utf-8",
+      Key: key,
+    }),
+  );
+}
+
+async function putBinaryObject({
+  body,
+  contentType,
+  key,
+  r2,
+}: {
+  body: Uint8Array;
+  contentType: string;
+  key: string;
+  r2: S3Client;
+}): Promise<void> {
+  const bucket = process.env.STOCK_PREP_R2_BUCKET;
+
+  if (!bucket) {
+    throw new Error("R2 bucket 名が設定されていません。");
+  }
+
+  await r2.send(
+    new PutObjectCommand({
+      Body: body,
+      Bucket: bucket,
+      ContentType: contentType,
       Key: key,
     }),
   );
@@ -833,6 +900,31 @@ async function getJsonObject<T>({
 
     throw error;
   }
+}
+
+async function deleteObject({
+  key,
+  r2,
+}: {
+  key: string;
+  r2: S3Client;
+}): Promise<void> {
+  const bucket = process.env.STOCK_PREP_R2_BUCKET;
+
+  if (!bucket) {
+    throw new Error("R2 bucket 名が設定されていません。");
+  }
+
+  await r2.send(
+    new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }),
+  );
+}
+
+function sanitizePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
 
 function wrapSupabaseSchemaError(error: unknown): Error {

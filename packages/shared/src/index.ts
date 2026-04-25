@@ -85,6 +85,26 @@ export type MarketDataPayload = Pick<
   generatedAt: string;
 };
 
+export type LatestSymbolSummary = Pick<
+  StoredStockSymbol,
+  "code" | "currency" | "id" | "name" | "region" | "securityType" | "sourceSymbol"
+> & {
+  lastClose: number | null;
+  lastCloseDate: string | null;
+};
+
+export type LatestExchangeRateSummary = Pick<
+  ExchangeRateBar,
+  "baseCurrency" | "close" | "date" | "pair" | "quoteCurrency"
+>;
+
+export type LatestSummaryPayload = {
+  datasetVersion: string;
+  exchangeRates: LatestExchangeRateSummary[];
+  generatedAt: string;
+  symbols: LatestSymbolSummary[];
+};
+
 export type DatasetVersionPayload = {
   datasetVersion: string;
   generatedAt: string;
