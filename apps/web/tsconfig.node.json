@@ -4,5 +4,11 @@
     "composite": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "tailwind.config.ts", "src/server/**/*.ts", "src/data/seedSnapshot.ts"]
+  "include": [
+    "vite.config.ts",
+    "tailwind.config.ts",
+    "src/server/**/*.ts",
+    "src/data/seedSnapshot.ts",
+    "src/data/stooqBulk.ts"
+  ]
 }

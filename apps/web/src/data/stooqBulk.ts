@@ -80,6 +80,7 @@ type StooqBulkCategoryRule = SupportedBulkCategoryRule | UnsupportedBulkCategory
 
 const expectedAsciiRowLength = 6;
 const expectedAsciiRowLengthWithOpenInterest = 7;
+const expectedStooqBulkRowLength = 10;
 
 export const stooqBulkImportScopes: readonly StooqBulkImportScope[] = [
   {
@@ -118,12 +119,20 @@ const stooqBulkCategoryRules: readonly StooqBulkCategoryRule[] = [
   { instrumentType: "etf", kind: "supported", pathFragment: "nyse etfs", region: "US" },
   { instrumentType: "stock", kind: "supported", pathFragment: "nysemkt stocks", region: "US" },
   { instrumentType: "etf", kind: "supported", pathFragment: "nysemkt etfs", region: "US" },
-  { instrumentType: "stock", kind: "supported", pathFragment: "lse stocks intl", region: "UK" },
+  {
+    kind: "unsupported",
+    pathFragment: "lse stocks intl",
+    reason: "LSE international stocks are outside the MVP universe.",
+  },
+  {
+    kind: "unsupported",
+    pathFragment: "hkex reits",
+    reason: "Hong Kong REIT products are outside the MVP universe.",
+  },
   { instrumentType: "stock", kind: "supported", pathFragment: "lse stocks", region: "UK" },
   { instrumentType: "etf", kind: "supported", pathFragment: "lse etfs", region: "UK" },
   { instrumentType: "stock", kind: "supported", pathFragment: "hkex stocks", region: "HK" },
   { instrumentType: "etf", kind: "supported", pathFragment: "hkex etfs", region: "HK" },
-  { instrumentType: "reit", kind: "supported", pathFragment: "hkex reits", region: "HK" },
   {
     kind: "unsupported",
     pathFragment: "futures",
@@ -341,12 +350,16 @@ function parseAsciiRow(
 
   if (
     columns.length !== expectedAsciiRowLength &&
-    columns.length !== expectedAsciiRowLengthWithOpenInterest
+    columns.length !== expectedAsciiRowLengthWithOpenInterest &&
+    columns.length !== expectedStooqBulkRowLength
   ) {
     throw new Error(`Unexpected ASCII columns for ${target.sourceSymbol}.`);
   }
 
-  const [date, open, high, low, close, volume] = columns;
+  const [date, open, high, low, close, volume] =
+    columns.length === expectedStooqBulkRowLength
+      ? [columns[2], columns[4], columns[5], columns[6], columns[7], columns[8]]
+      : columns;
 
   if (!date || !open || !high || !low || !close || !volume) {
     throw new Error(`Incomplete ASCII row for ${target.sourceSymbol}.`);
@@ -354,7 +367,7 @@ function parseAsciiRow(
 
   const parsed = {
     close: Number(close),
-    date,
+    date: normalizeAsciiDate(date),
     high: Number(high),
     low: Number(low),
     open: Number(open),
@@ -385,13 +398,26 @@ function isAsciiHeaderLine(line: string): boolean {
     .map((value) => value.trim().toLowerCase());
 
   return (
-    columns.length >= expectedAsciiRowLength &&
-    columns[0] === "date" &&
-    columns[1] === "open" &&
-    columns[2] === "high" &&
-    columns[3] === "low" &&
-    columns[4] === "close"
+    (columns.length >= expectedAsciiRowLength &&
+      columns[0] === "date" &&
+      columns[1] === "open" &&
+      columns[2] === "high" &&
+      columns[3] === "low" &&
+      columns[4] === "close") ||
+    (columns.length >= expectedStooqBulkRowLength &&
+      columns[0] === "<ticker>" &&
+      columns[2] === "<date>" &&
+      columns[4] === "<open>" &&
+      columns[7] === "<close>")
   );
+}
+
+function normalizeAsciiDate(rawDate: string): string {
+  if (/^\d{8}$/.test(rawDate)) {
+    return `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
+  }
+
+  return rawDate;
 }
 
 function normalizeSourceSymbol(sourceSymbol: string): string {
@@ -405,7 +431,7 @@ function resolveInstrumentTypeFromRule(
   return target.instrumentType;
 }
 
-function resolveSourceSymbolFromPath(path: string): string {
+export function resolveSourceSymbolFromPath(path: string): string {
   const normalizedPath = path.replace(/\\/g, "/").trim();
   const fileName = normalizedPath.split("/").at(-1) ?? normalizedPath;
   return fileName.replace(/\.(csv|txt)$/i, "");

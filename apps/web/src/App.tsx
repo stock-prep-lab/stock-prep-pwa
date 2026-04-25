@@ -2,6 +2,7 @@ import { BrowserRouter, Link, Navigate, NavLink, Route, Routes } from "react-rou
 
 import { APP_NAME } from "@stock-prep/shared";
 
+import { AdminImportPage } from "./pages/AdminImportPage";
 import { HoldingFormPage } from "./pages/HoldingFormPage";
 import { HomePage } from "./pages/HomePage";
 import { PortfolioPage } from "./pages/PortfolioPage";
@@ -65,6 +66,14 @@ const primaryRoutes = [
 ] satisfies PrimaryRoute[];
 
 const secondaryRoutes = [
+  {
+    id: "admin-imports",
+    path: "/admin/imports",
+    href: "/admin/imports",
+    label: "データ取り込み管理",
+    title: "データ取り込み管理",
+    description: "市場別 ZIP を手動取り込みするための画面。",
+  },
   {
     id: "stock-detail",
     path: "/stocks/:symbolCode",
@@ -133,6 +142,8 @@ function AppShell() {
                   <ScreeningPage />
                 ) : route.id === "portfolio" ? (
                   <PortfolioPage />
+                ) : route.id === "admin-imports" ? (
+                  <AdminImportPage />
                 ) : route.id === "stock-detail" ? (
                   <StockDetailPage />
                 ) : route.id === "holding-form" ? (

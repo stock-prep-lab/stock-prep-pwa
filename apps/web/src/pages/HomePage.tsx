@@ -114,6 +114,14 @@ export function HomePage() {
             <p className="max-w-2xl text-base leading-7 text-zinc-700">
               引け後の数字を確認して、翌営業日の候補を絞り込みます。
             </p>
+            <div>
+              <Link
+                className="inline-flex rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 transition hover:border-teal-700 hover:text-teal-700"
+                to="/admin/imports"
+              >
+                データ取り込み管理へ
+              </Link>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

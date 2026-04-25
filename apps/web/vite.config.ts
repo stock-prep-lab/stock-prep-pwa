@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { Readable } from "node:stream";
 
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
@@ -6,6 +7,8 @@ import { defineConfig, type Plugin } from "vite";
 import {
   handleDatasetVersionRequest,
   handleGetHoldingsRequest,
+  handleImportMarketZipRequest,
+  handleListImportJobsRequest,
   handleMarketDataRequest,
   handleUpsertHoldingRequest,
 } from "./src/server/stockPrepApiHandlers";
@@ -48,9 +51,49 @@ function stockPrepApiDevPlugin(): Plugin {
             return;
           }
 
+          if (request.method === "GET" && url.pathname === "/api/admin/import-jobs") {
+            sendJson(response, 200, await handleListImportJobsRequest());
+            return;
+          }
+
           if (request.method === "PUT" && url.pathname === "/api/holdings") {
             const body = (await readJsonBody(request)) as UpsertHoldingRequest;
             sendJson(response, 200, await handleUpsertHoldingRequest(body));
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/api/admin/import-jobs") {
+            const webRequest = await toWebRequest(request);
+            const formData = await webRequest.formData();
+            const scopeId = formData.get("scopeId");
+            const file = formData.get("file");
+
+            if (
+              typeof scopeId !== "string" ||
+              (scopeId !== "FX" &&
+                scopeId !== "HK" &&
+                scopeId !== "JP" &&
+                scopeId !== "UK" &&
+                scopeId !== "US")
+            ) {
+              sendJson(response, 400, { error: "scopeId が不正です。" });
+              return;
+            }
+
+            if (!(file instanceof File)) {
+              sendJson(response, 400, { error: "ZIP ファイルが必要です。" });
+              return;
+            }
+
+            sendJson(
+              response,
+              201,
+              await handleImportMarketZipRequest({
+                fileName: file.name,
+                scopeId,
+                zipBytes: new Uint8Array(await file.arrayBuffer()),
+              }),
+            );
             return;
           }
 
@@ -64,6 +107,35 @@ function stockPrepApiDevPlugin(): Plugin {
     },
     name: "stock-prep-api-dev-plugin",
   };
+}
+
+async function toWebRequest(request: IncomingMessage): Promise<Request> {
+  const headers = new Headers();
+
+  for (const [key, value] of Object.entries(request.headers)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        headers.append(key, item);
+      }
+      continue;
+    }
+
+    if (typeof value === "string") {
+      headers.set(key, value);
+    }
+  }
+
+  const init = {
+    body:
+      request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : (Readable.toWeb(request) as unknown as ReadableStream<Uint8Array>),
+    duplex: "half",
+    headers,
+    method: request.method,
+  } as RequestInit & { duplex?: "half" };
+
+  return new Request(`http://localhost${request.url ?? "/"}`, init);
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
