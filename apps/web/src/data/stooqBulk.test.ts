@@ -74,7 +74,7 @@ describe("stooqBulk", () => {
     expect(parseStooqAsciiDailyPriceText("", createTarget())).toEqual([]);
   });
 
-  it("normalizes supported categories and keeps only stock / ETF / REIT targets", () => {
+  it("normalizes supported categories and excludes MVP 非対象カテゴリ", () => {
     const result = normalizeStooqBulkData({
       files: [
         {
@@ -88,6 +88,10 @@ describe("stooqBulk", () => {
         {
           content: "2026-04-17,1200,1210,1190,1205,920000",
           path: "data/daily/hk/hkex reits/0823.hk.txt",
+        },
+        {
+          content: "2026-04-17,101,102,100,101.5,5000",
+          path: "data/daily/uk/lse stocks intl/abcd.uk.txt",
         },
         {
           content: "2026-04-17,110,112,109,111,440000",
@@ -114,16 +118,18 @@ describe("stooqBulk", () => {
     });
 
     expect(result.histories.map((history) => history.sourceSymbol)).toEqual([
-      "0823.hk",
       "1306.jp",
       "7203.jp",
     ]);
     expect(result.histories.map((history) => history.instrumentType)).toEqual([
-      "reit",
       "etf",
       "stock",
     ]);
     expect(result.failures).toEqual([]);
+    expect(result.symbols.find((symbol) => symbol.sourceSymbol === "0823.hk")).toMatchObject({
+      importStatus: "unsupported",
+      lastImportError: "Hong Kong REIT products are outside the MVP universe.",
+    });
   });
 
   it("marks targets as imported, noData, failed, or unsupported", () => {
@@ -224,10 +230,9 @@ describe("stooqBulk", () => {
 
   it("resolves supported and unsupported category rules from bulk paths", () => {
     expect(resolveBulkCategoryRule("data/daily/hk/hkex reits/0823.hk.txt")).toEqual({
-      instrumentType: "reit",
-      kind: "supported",
+      kind: "unsupported",
       pathFragment: "hkex reits",
-      region: "HK",
+      reason: "Hong Kong REIT products are outside the MVP universe.",
     });
     expect(resolveBulkCategoryRule("data/daily/us/nyse bonds/test.us.txt")).toEqual({
       kind: "unsupported",
