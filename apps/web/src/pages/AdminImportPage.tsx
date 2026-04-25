@@ -116,7 +116,6 @@ export function AdminImportPage() {
   return (
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-teal-700">Slice 17</p>
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="flex flex-col gap-3">
             <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">

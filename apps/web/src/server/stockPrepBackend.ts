@@ -86,7 +86,7 @@ type GlobalWithStockPrepServerState = typeof globalThis & {
 const defaultGeneratedAt = "2026-04-17T15:35:00+09:00";
 const defaultMarketDatasetVersion = "server-market-v1";
 const latestDatasetStateId = "latest";
-const schemaGuidePath = "docs/setup/supabase-slice17.sql";
+const schemaGuidePath = "docs/setup/supabase-import-tables.sql";
 
 const supabaseTableNames = {
   cashBalances: "stock_prep_cash_balances",
@@ -941,7 +941,7 @@ function wrapSupabaseSchemaError(error: unknown): Error {
     message.includes("does not exist")
   ) {
     return new Error(
-      `Supabase の Slice 17 用テーブルが見つかりません。${schemaGuidePath} を SQL Editor で実行してください。`,
+      `Supabase の取り込み用テーブルが見つかりません。${schemaGuidePath} を SQL Editor で実行してください。`,
     );
   }
 
