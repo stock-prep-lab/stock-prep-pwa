@@ -610,6 +610,43 @@
 
 ---
 
+## Slice 17.6: Mac `launchd` worker による取り込み実行
+
+### 対象
+- Mac ローカル実行用の import worker エントリポイント追加
+- Supabase の `import_jobs` から `queued` job を取得する処理
+- `queued` -> `processing` -> `completed` / `failed` の状態更新
+- Cloudflare R2 から raw ZIP を取得する処理
+- ZIP 展開、`.txt` 収集、正規化ロジックの worker 呼び出し
+- 対象 scope の旧 `full historical` / `latest summary` を先に削除してから再保存する処理
+- `dataset_state` 更新
+- raw ZIP 削除
+- `launchd` 用 plist とローカルセットアップ手順の追加
+
+### 非対象
+- Windows / Linux 用の常駐ジョブ実装
+- Cloud Run / GitHub Actions などクラウド runner への移植
+- direct-to-R2 upload のクライアント実装
+- 通知送信
+
+### 完了条件
+- Mac 上で import worker を手動実行できる
+- `launchd` で定期実行できる
+- `queued` job を 1 件以上拾って処理できる
+- 処理成功時に R2 の対象 scope データと `dataset_state` が更新される
+- 処理失敗時に `import_jobs` が `failed` になり、失敗理由を残せる
+- R2 が 2 世代保持にならず、対象 scope の旧データを先に削除してから更新する
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- worker の job 取得 / 状態更新ロジックにユニットテストを追加
+- ローカルで 1 回の手動実行確認
+- `launchd` 経由の起動確認手順を PR に記載
+
+---
+
 ## Slice 18: 銘柄マスタ / 検索の本物データ化
 
 ### 対象
