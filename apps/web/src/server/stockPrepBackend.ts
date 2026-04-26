@@ -1,10 +1,15 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   CashBalance,
+  CreateImportUploadSessionRequest,
   DatasetVersionPayload,
+  FinalizeImportUploadRequest,
   HoldingsPayload,
   ImportJobRecord,
   ImportJobsPayload,
+  ImportUploadSessionPayload,
   MarketDataPayload,
   PortfolioHolding,
   UpsertHoldingRequest,
@@ -13,6 +18,8 @@ import type {
 import { dummyStockPrepSnapshot } from "../data/seedSnapshot.js";
 import type { StockPrepMarketDataManifest } from "./stockPrepImport.js";
 import {
+  assertObjectExists,
+  createPresignedUploadUrl,
   createR2Client,
   deleteObject,
   getJsonObject,
@@ -72,6 +79,10 @@ export type QueuedImportJob = ImportJobRecord & {
 };
 
 type StockPrepServerBackend = {
+  createImportUploadSession(
+    request: CreateImportUploadSessionRequest,
+  ): Promise<ImportUploadSessionPayload>;
+  finalizeImportUpload(request: FinalizeImportUploadRequest): Promise<ImportJobRecord>;
   getDatasetVersionPayload(args?: {
     localDatasetVersion?: string | null;
   }): Promise<DatasetVersionPayload>;
@@ -92,6 +103,7 @@ type GlobalWithStockPrepServerState = typeof globalThis & {
 
 const defaultGeneratedAt = "2026-04-17T15:35:00+09:00";
 const defaultMarketDatasetVersion = "server-market-v1";
+const importUploadTokenTtlSeconds = 15 * 60;
 const latestDatasetStateId = "latest";
 const schemaGuidePath = "docs/setup/supabase-import-tables.sql";
 
@@ -117,6 +129,15 @@ export function resetStockPrepServerBackendState(): void {
 
 function createInMemoryBackend(): StockPrepServerBackend {
   return {
+    async createImportUploadSession() {
+      return {
+        mode: "server-proxy",
+        reason: "ローカル fallback ではサーバー経由アップロードを使います。",
+      };
+    },
+    async finalizeImportUpload() {
+      throw new Error("ローカル fallback では finalizeImportUpload を使いません。");
+    },
     async getDatasetVersionPayload({ localDatasetVersion } = {}) {
       const { marketDataPayload } = getInMemoryState();
 
@@ -193,7 +214,9 @@ function createInMemoryBackend(): StockPrepServerBackend {
       validateHoldingRequest(request);
 
       const state = getInMemoryState();
-      const symbol = state.marketDataPayload.symbols.find((candidate) => candidate.id === request.symbolId);
+      const symbol = state.marketDataPayload.symbols.find(
+        (candidate) => candidate.id === request.symbolId,
+      );
 
       if (!symbol) {
         throw new Error("保存対象の銘柄がサーバー側に存在しません。");
@@ -230,6 +253,78 @@ function createRemoteBackend(): StockPrepServerBackend {
   const supabase = createSupabaseAdminClient();
   const r2 = createR2Client();
   const backend: StockPrepServerBackend = {
+    async createImportUploadSession({ contentType, fileName, scopeId }) {
+      const startedAt = new Date().toISOString();
+      const jobId = crypto.randomUUID();
+      const rawZipKey = buildRawZipKey({ fileName, jobId, scopeId });
+      const normalizedContentType = normalizeZipContentType(contentType);
+      const finalizeToken = createImportUploadFinalizeToken({
+        fileName,
+        jobId,
+        rawObjectKey: rawZipKey,
+        scopeId,
+        startedAt,
+      });
+      const uploadUrl = await createPresignedUploadUrl({
+        contentType: normalizedContentType,
+        expiresInSeconds: importUploadTokenTtlSeconds,
+        key: rawZipKey,
+        r2,
+      });
+
+      return {
+        expiresAt: new Date(Date.now() + importUploadTokenTtlSeconds * 1000).toISOString(),
+        fileName,
+        finalizeToken,
+        jobId,
+        mode: "direct-r2",
+        scopeId,
+        uploadHeaders: {
+          "Content-Type": normalizedContentType,
+        },
+        uploadMethod: "PUT",
+        uploadUrl,
+      };
+    },
+    async finalizeImportUpload({ finalizeToken }) {
+      const tokenPayload = parseImportUploadFinalizeToken(finalizeToken);
+      const queuedJob = createImportJob({
+        fileName: tokenPayload.fileName,
+        id: tokenPayload.jobId,
+        scopeId: tokenPayload.scopeId,
+        startedAt: tokenPayload.startedAt,
+        status: "queued",
+      });
+
+      try {
+        await assertObjectExists({
+          key: tokenPayload.rawObjectKey,
+          r2,
+        });
+      } catch (error) {
+        throw new Error(
+          error instanceof Error
+            ? `R2 へのアップロード確認に失敗しました: ${error.message}`
+            : "R2 へのアップロード確認に失敗しました。",
+        );
+      }
+
+      try {
+        await insertImportJob({
+          job: queuedJob,
+          rawObjectKey: tokenPayload.rawObjectKey,
+          supabase,
+        });
+      } catch (error) {
+        await deleteObject({
+          key: tokenPayload.rawObjectKey,
+          r2,
+        }).catch(() => undefined);
+        throw wrapSupabaseSchemaError(error);
+      }
+
+      return queuedJob;
+    },
     async getDatasetVersionPayload({ localDatasetVersion } = {}) {
       const latestState = await loadLatestDatasetState({ supabase }).catch(() => null);
 
@@ -258,8 +353,13 @@ function createRemoteBackend(): StockPrepServerBackend {
       }
 
       const resolvedCashBalances =
-        cashBalances.length > 0 ? cashBalances : structuredClone(dummyStockPrepSnapshot.cashBalances);
-      const updatedAt = [...resolvedCashBalances.map((cash) => cash.updatedAt), ...holdings.map((h) => h.updatedAt)]
+        cashBalances.length > 0
+          ? cashBalances
+          : structuredClone(dummyStockPrepSnapshot.cashBalances);
+      const updatedAt = [
+        ...resolvedCashBalances.map((cash) => cash.updatedAt),
+        ...holdings.map((h) => h.updatedAt),
+      ]
         .sort((left, right) => right.localeCompare(left))
         .at(0);
 
@@ -304,7 +404,10 @@ function createRemoteBackend(): StockPrepServerBackend {
 
         return marketData;
       } catch (error) {
-        console.error("Falling back to dummy market data because remote market data load failed.", error);
+        console.error(
+          "Falling back to dummy market data because remote market data load failed.",
+          error,
+        );
         return createInMemoryBackend().getMarketDataPayload();
       }
     },
@@ -446,11 +549,11 @@ function replaceImportJob(jobs: ImportJobRecord[], job: ImportJobRecord): Import
 export function hasRemoteMarketDataEnv(): boolean {
   return Boolean(
     process.env.STOCK_PREP_SUPABASE_URL &&
-      process.env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY &&
-      process.env.STOCK_PREP_R2_ACCOUNT_ID &&
-      process.env.STOCK_PREP_R2_ACCESS_KEY_ID &&
-      process.env.STOCK_PREP_R2_SECRET_ACCESS_KEY &&
-      process.env.STOCK_PREP_R2_BUCKET,
+    process.env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY &&
+    process.env.STOCK_PREP_R2_ACCOUNT_ID &&
+    process.env.STOCK_PREP_R2_ACCESS_KEY_ID &&
+    process.env.STOCK_PREP_R2_SECRET_ACCESS_KEY &&
+    process.env.STOCK_PREP_R2_BUCKET,
   );
 }
 
@@ -686,7 +789,9 @@ async function upsertHoldingRow({
   holding: PortfolioHolding;
   supabase: SupabaseClient;
 }): Promise<void> {
-  const { error } = await supabase.from(supabaseTableNames.holdings).upsert(mapHoldingRecord(holding));
+  const { error } = await supabase
+    .from(supabaseTableNames.holdings)
+    .upsert(mapHoldingRecord(holding));
 
   if (error) {
     throw error;
@@ -763,6 +868,84 @@ function mapCashBalanceRow(row: CashBalanceRow): CashBalance {
 
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
+}
+
+type ImportUploadFinalizeTokenPayload = {
+  exp: number;
+  fileName: string;
+  jobId: string;
+  rawObjectKey: string;
+  scopeId: ImportJobRecord["scopeId"];
+  startedAt: string;
+};
+
+function createImportUploadFinalizeToken(
+  payload: Omit<ImportUploadFinalizeTokenPayload, "exp">,
+): string {
+  const encodedPayload = encodeImportUploadTokenPayload({
+    ...payload,
+    exp: Math.floor(Date.now() / 1000) + importUploadTokenTtlSeconds,
+  });
+  const signature = createImportUploadTokenSignature(encodedPayload);
+
+  return `${encodedPayload}.${signature}`;
+}
+
+function parseImportUploadFinalizeToken(token: string): ImportUploadFinalizeTokenPayload {
+  const [encodedPayload, signature] = token.split(".");
+
+  if (!encodedPayload || !signature) {
+    throw new Error("アップロード完了トークンの形式が不正です。");
+  }
+
+  const expectedSignature = createImportUploadTokenSignature(encodedPayload);
+
+  if (
+    signature.length !== expectedSignature.length ||
+    !timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
+  ) {
+    throw new Error("アップロード完了トークンの署名が不正です。");
+  }
+
+  const payload = decodeImportUploadTokenPayload(encodedPayload);
+
+  if (payload.exp < Math.floor(Date.now() / 1000)) {
+    throw new Error("アップロード完了トークンの有効期限が切れています。");
+  }
+
+  return payload;
+}
+
+function encodeImportUploadTokenPayload(payload: ImportUploadFinalizeTokenPayload): string {
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+function decodeImportUploadTokenPayload(tokenPayload: string): ImportUploadFinalizeTokenPayload {
+  try {
+    return JSON.parse(
+      Buffer.from(tokenPayload, "base64url").toString("utf8"),
+    ) as ImportUploadFinalizeTokenPayload;
+  } catch {
+    throw new Error("アップロード完了トークンの本文を復元できませんでした。");
+  }
+}
+
+function createImportUploadTokenSignature(tokenPayload: string): string {
+  return createHmac("sha256", getImportUploadTokenSecret())
+    .update(tokenPayload)
+    .digest("base64url");
+}
+
+function getImportUploadTokenSecret(): string {
+  return (
+    process.env.STOCK_PREP_IMPORT_UPLOAD_SECRET ??
+    process.env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY ??
+    "local-stock-prep-import-upload-secret"
+  );
+}
+
+function normalizeZipContentType(contentType: string): string {
+  return contentType.trim() || "application/zip";
 }
 
 export function buildRawZipKey({

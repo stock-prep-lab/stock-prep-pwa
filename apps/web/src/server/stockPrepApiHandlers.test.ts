@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  handleCreateImportUploadSessionRequest,
   handleDatasetVersionRequest,
   handleGetHoldingsRequest,
   handleImportMarketZipRequest,
@@ -12,8 +13,47 @@ import {
 } from "./stockPrepApiHandlers";
 
 describe("stockPrepApiHandlers", () => {
+  const originalEnv = {
+    STOCK_PREP_R2_ACCOUNT_ID: process.env.STOCK_PREP_R2_ACCOUNT_ID,
+    STOCK_PREP_R2_ACCESS_KEY_ID: process.env.STOCK_PREP_R2_ACCESS_KEY_ID,
+    STOCK_PREP_R2_BUCKET: process.env.STOCK_PREP_R2_BUCKET,
+    STOCK_PREP_R2_SECRET_ACCESS_KEY: process.env.STOCK_PREP_R2_SECRET_ACCESS_KEY,
+    STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY: process.env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY,
+    STOCK_PREP_SUPABASE_URL: process.env.STOCK_PREP_SUPABASE_URL,
+  };
+
   beforeEach(() => {
     resetStockPrepApiServerState();
+    clearRemoteEnv();
+  });
+
+  it("returns a direct R2 upload session when remote env is configured", async () => {
+    process.env.STOCK_PREP_SUPABASE_URL = "https://example.supabase.co";
+    process.env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+    process.env.STOCK_PREP_R2_ACCOUNT_ID = "account-id";
+    process.env.STOCK_PREP_R2_ACCESS_KEY_ID = "access-key-id";
+    process.env.STOCK_PREP_R2_SECRET_ACCESS_KEY = "secret-access-key";
+    process.env.STOCK_PREP_R2_BUCKET = "bucket-name";
+
+    try {
+      const session = await handleCreateImportUploadSessionRequest({
+        contentType: "application/zip",
+        fileName: "d_jp_txt.zip",
+        fileSize: 1024,
+        scopeId: "JP",
+      });
+
+      expect(session.mode).toBe("direct-r2");
+
+      if (session.mode === "direct-r2") {
+        expect(session.uploadMethod).toBe("PUT");
+        expect(session.uploadHeaders["Content-Type"]).toBe("application/zip");
+        expect(session.uploadUrl).toContain("/incoming/jp/");
+        expect(session.finalizeToken).toContain(".");
+      }
+    } finally {
+      restoreRemoteEnv(originalEnv);
+    }
   });
 
   it("returns shouldSync=false when the local dataset version is current", async () => {
@@ -95,3 +135,21 @@ describe("stockPrepApiHandlers", () => {
     });
   });
 });
+
+function clearRemoteEnv() {
+  delete process.env.STOCK_PREP_SUPABASE_URL;
+  delete process.env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY;
+  delete process.env.STOCK_PREP_R2_ACCOUNT_ID;
+  delete process.env.STOCK_PREP_R2_ACCESS_KEY_ID;
+  delete process.env.STOCK_PREP_R2_SECRET_ACCESS_KEY;
+  delete process.env.STOCK_PREP_R2_BUCKET;
+}
+
+function restoreRemoteEnv(env: Record<string, string | undefined>) {
+  process.env.STOCK_PREP_SUPABASE_URL = env.STOCK_PREP_SUPABASE_URL;
+  process.env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY = env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY;
+  process.env.STOCK_PREP_R2_ACCOUNT_ID = env.STOCK_PREP_R2_ACCOUNT_ID;
+  process.env.STOCK_PREP_R2_ACCESS_KEY_ID = env.STOCK_PREP_R2_ACCESS_KEY_ID;
+  process.env.STOCK_PREP_R2_SECRET_ACCESS_KEY = env.STOCK_PREP_R2_SECRET_ACCESS_KEY;
+  process.env.STOCK_PREP_R2_BUCKET = env.STOCK_PREP_R2_BUCKET;
+}

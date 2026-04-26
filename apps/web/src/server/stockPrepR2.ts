@@ -1,9 +1,11 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export function createR2Client(): S3Client {
   const accountId = process.env.STOCK_PREP_R2_ACCOUNT_ID;
@@ -68,13 +70,33 @@ export async function putBinaryObject({
   );
 }
 
-export async function getJsonObject<T>({
+export async function createPresignedUploadUrl({
+  contentType,
+  expiresInSeconds = 900,
   key,
   r2,
 }: {
+  contentType: string;
+  expiresInSeconds?: number;
   key: string;
   r2: S3Client;
-}): Promise<T> {
+}): Promise<string> {
+  const bucket = getBucketName();
+
+  return getSignedUrl(
+    r2,
+    new PutObjectCommand({
+      Bucket: bucket,
+      ContentType: contentType,
+      Key: key,
+    }),
+    {
+      expiresIn: expiresInSeconds,
+    },
+  );
+}
+
+export async function getJsonObject<T>({ key, r2 }: { key: string; r2: S3Client }): Promise<T> {
   const bucket = getBucketName();
 
   try {
@@ -145,13 +167,38 @@ export async function getBinaryObject({
   }
 }
 
-export async function deleteObject({
+export async function assertObjectExists({
   key,
   r2,
 }: {
   key: string;
   r2: S3Client;
 }): Promise<void> {
+  const bucket = getBucketName();
+
+  try {
+    await r2.send(
+      new HeadObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+    );
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      ("name" in error || "$metadata" in error) &&
+      ((error as { name?: string }).name === "NoSuchKey" ||
+        (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404)
+    ) {
+      throw new Error(`R2 object was not found: ${key}`);
+    }
+
+    throw error;
+  }
+}
+
+export async function deleteObject({ key, r2 }: { key: string; r2: S3Client }): Promise<void> {
   const bucket = getBucketName();
 
   await r2.send(

@@ -1,8 +1,14 @@
 import {
+  handleCreateImportUploadSessionRequest,
+  handleFinalizeImportUploadRequest,
   handleImportMarketZipRequest,
   handleListImportJobsRequest,
 } from "../../apps/web/src/server/stockPrepApiHandlers.js";
-import type { ImportJobRecord } from "@stock-prep/shared";
+import type {
+  CreateImportUploadSessionRequest,
+  FinalizeImportUploadRequest,
+  ImportJobRecord,
+} from "@stock-prep/shared";
 
 function isScopeId(value: string): value is ImportJobRecord["scopeId"] {
   return value === "FX" || value === "HK" || value === "JP" || value === "UK" || value === "US";
@@ -24,26 +30,54 @@ export default {
       });
     }
 
+    const contentType = request.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as
+        | ({ action: "prepare-upload" } & CreateImportUploadSessionRequest)
+        | ({ action: "finalize-upload" } & FinalizeImportUploadRequest);
+
+      if (body.action === "prepare-upload") {
+        if (typeof body.scopeId !== "string" || !isScopeId(body.scopeId)) {
+          return jsonErrorResponse("scopeId が不正です。", 400);
+        }
+
+        if (!body.fileName) {
+          return jsonErrorResponse("fileName が必要です。", 400);
+        }
+
+        return Response.json(
+          await handleCreateImportUploadSessionRequest({
+            contentType: body.contentType,
+            fileName: body.fileName,
+            fileSize: body.fileSize,
+            scopeId: body.scopeId,
+          }),
+        );
+      }
+
+      if (!body.finalizeToken) {
+        return jsonErrorResponse("finalizeToken が必要です。", 400);
+      }
+
+      return Response.json(
+        await handleFinalizeImportUploadRequest({
+          finalizeToken: body.finalizeToken,
+        }),
+        { status: 201 },
+      );
+    }
+
     const formData = await request.formData();
     const scopeId = formData.get("scopeId");
     const file = formData.get("file");
 
     if (typeof scopeId !== "string" || !isScopeId(scopeId)) {
-      return new Response(JSON.stringify({ error: "scopeId が不正です。" }), {
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-        },
-        status: 400,
-      });
+      return jsonErrorResponse("scopeId が不正です。", 400);
     }
 
     if (!(file instanceof File)) {
-      return new Response(JSON.stringify({ error: "ZIP ファイルが必要です。" }), {
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-        },
-        status: 400,
-      });
+      return jsonErrorResponse("ZIP ファイルが必要です。", 400);
     }
 
     const job = await handleImportMarketZipRequest({
@@ -55,3 +89,12 @@ export default {
     return Response.json(job, { status: 201 });
   },
 };
+
+function jsonErrorResponse(error: string, status: number): Response {
+  return new Response(JSON.stringify({ error }), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    status,
+  });
+}
