@@ -8,20 +8,20 @@ import {
   updateDatasetStateStatus,
   updateImportJob,
   type QueuedImportJob,
-} from "./stockPrepBackend";
+} from "./stockPrepBackend.js";
 import {
   buildLatestSummaryPayload,
   createEmptyMarketDataPayload,
   importBulkScopeFromZip,
   type StockPrepMarketDataManifest,
-} from "./stockPrepImport";
+} from "./stockPrepImport.js";
 import {
   createR2Client,
   deleteObject,
   getBinaryObject,
   getJsonObject,
   putJsonObject,
-} from "./stockPrepR2";
+} from "./stockPrepR2.js";
 
 const currentManifestKey = "current/manifest.json";
 const currentMarketDataKey = "current/market-data.json";

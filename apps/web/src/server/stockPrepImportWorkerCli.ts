@@ -1,4 +1,4 @@
-import { runStockPrepImportWorker } from "./stockPrepImportWorker";
+import { runStockPrepImportWorker } from "./stockPrepImportWorker.js";
 
 async function main() {
   const maxJobs = parseMaxJobs(process.argv.slice(2));

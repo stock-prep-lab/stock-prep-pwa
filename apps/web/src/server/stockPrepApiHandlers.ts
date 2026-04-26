@@ -7,7 +7,7 @@ import type {
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
 
-import { getStockPrepServerBackend, resetStockPrepServerBackendState } from "./stockPrepBackend";
+import { getStockPrepServerBackend, resetStockPrepServerBackendState } from "./stockPrepBackend.js";
 
 export async function handleDatasetVersionRequest({
   localDatasetVersion,

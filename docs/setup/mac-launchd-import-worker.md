@@ -84,7 +84,7 @@ launchctl list | grep stockpreplab
 
 補足:
 
-- plist の `StartInterval` は 300 秒にしてある
+- plist の `StartInterval` は 3600 秒（1 時間）にしてある
 - backlog がたまっている場合でも、1 回の起動で queue が空になるまで順次処理する
 
 ## 停止

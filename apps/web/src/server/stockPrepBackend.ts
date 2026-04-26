@@ -10,14 +10,14 @@ import type {
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
 
-import { dummyStockPrepSnapshot } from "../data/seedSnapshot";
-import type { StockPrepMarketDataManifest } from "./stockPrepImport";
+import { dummyStockPrepSnapshot } from "../data/seedSnapshot.js";
+import type { StockPrepMarketDataManifest } from "./stockPrepImport.js";
 import {
   createR2Client,
   deleteObject,
   getJsonObject,
   putBinaryObject,
-} from "./stockPrepR2";
+} from "./stockPrepR2.js";
 
 type StockPrepServerState = {
   holdingsPayload: HoldingsPayload;
@@ -154,7 +154,7 @@ function createInMemoryBackend(): StockPrepServerBackend {
       state.importJobs = [runningJob, ...state.importJobs].slice(0, 20);
 
       try {
-        const { importBulkScopeFromZip } = await import("./stockPrepImport");
+        const { importBulkScopeFromZip } = await import("./stockPrepImport.js");
         const result = await importBulkScopeFromZip({
           currentMarketData: state.marketDataPayload,
           generatedAt: startedAt,

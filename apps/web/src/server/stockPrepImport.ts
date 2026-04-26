@@ -18,7 +18,7 @@ import {
   type StooqBulkImportTarget,
   type StooqNormalizedPriceHistoryFile,
   type StooqNormalizedSymbol,
-} from "../data/stooqBulk";
+} from "../data/stooqBulk.js";
 
 type SupportedRegion = Exclude<ImportScopeId, "FX">;
 

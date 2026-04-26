@@ -1,4 +1,4 @@
-import { handleMarketDataRequest } from "../apps/web/src/server/stockPrepApiHandlers";
+import { handleMarketDataRequest } from "../apps/web/src/server/stockPrepApiHandlers.js";
 
 export default {
   async fetch(): Promise<Response> {

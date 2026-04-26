@@ -1,4 +1,4 @@
-import { handleDatasetVersionRequest } from "../apps/web/src/server/stockPrepApiHandlers";
+import { handleDatasetVersionRequest } from "../apps/web/src/server/stockPrepApiHandlers.js";
 
 export default {
   async fetch(request: Request): Promise<Response> {
