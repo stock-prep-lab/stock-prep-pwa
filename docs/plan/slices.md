@@ -667,6 +667,11 @@
 - Vercel は upload URL 発行と `import_jobs` 作成の入口として動く
 - 大きい ZIP を Vercel Function の request body に載せずに取り込み開始できる
 - アップロード成功後に `queued` job が作成され、17.6 の worker から処理できる
+- 実 ZIP 5 本（`jp` / `us` / `uk` / `hk` / `world`）で取り込み導線が通る
+- R2 の object key と cleanup が想定どおりに動き、raw ZIP と current データの扱いを確認できる
+- worker 失敗時に `import_jobs` が `failed` になり、失敗理由を確認できる
+- `launchd` の定期実行で queue polling と job 実行が安定して回る
+- 管理画面の進捗表示で upload / queue / 処理結果が分かりやすく確認できる
 - モバイル幅とデスクトップ幅の両方でアップロード操作が成立する
 
 ### テスト / 確認観点
@@ -674,7 +679,11 @@
 - `pnpm typecheck`
 - `pnpm test`
 - upload URL 発行ロジックのユニットテストを追加
-- 管理画面から 1 件の ZIP をアップロードして `queued` job が作られる確認
+- 管理画面から実 ZIP 5 本をアップロードして `queued` job 作成から worker 完了まで確認
+- R2 の object key / cleanup を実環境で確認
+- 失敗系 1 件を流して `failed` 記録と error message を確認
+- `launchd` 登録後の定期実行ログ確認
+- モバイル幅 / デスクトップ幅で進捗 UI の確認
 
 ---
 
