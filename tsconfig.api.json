@@ -14,6 +14,8 @@
     "api/**/*.ts",
     "apps/web/src/server/**/*.ts",
     "apps/web/src/data/seedSnapshot.ts",
-    "apps/web/src/data/stooqBulk.ts"
+    "apps/web/src/data/stooqBulk.ts",
+    "packages/shared/src/**/*.ts",
+    "packages/domain/src/**/*.ts"
   ]
 }
