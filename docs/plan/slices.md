@@ -647,11 +647,42 @@
 
 ---
 
+## Slice 17.7: direct-to-R2 upload のクライアント実装
+
+### 対象
+- 管理画面から raw ZIP を Cloudflare R2 へ直接アップロードするクライアント導線
+- Vercel API で presigned upload URL または同等の一時アップロード権限を払い出す処理
+- R2 直接アップロード後に `import_jobs` を `queued` で作成する処理
+- アップロード進捗、成功、失敗を管理画面で表示する UI 更新
+- 大きい ZIP を Vercel Function 本体へ直接 POST しない運用への切り替え
+
+### 非対象
+- Mac `launchd` worker の実装変更
+- Windows / Linux 用 worker 実装
+- Cloud Run / GitHub Actions などクラウド runner への移植
+- 通知送信
+
+### 完了条件
+- 管理画面から市場別 ZIP を選んで R2 へ直接アップロードできる
+- Vercel は upload URL 発行と `import_jobs` 作成の入口として動く
+- 大きい ZIP を Vercel Function の request body に載せずに取り込み開始できる
+- アップロード成功後に `queued` job が作成され、17.6 の worker から処理できる
+- モバイル幅とデスクトップ幅の両方でアップロード操作が成立する
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- upload URL 発行ロジックのユニットテストを追加
+- 管理画面から 1 件の ZIP をアップロードして `queued` job が作られる確認
+
+---
+
 ## Slice 18: 銘柄マスタ / 検索の本物データ化
 
 ### 対象
 - 検索画面のダミー検索結果回収
-- R2 / IndexedDB にキャッシュされた軽量銘柄データ検索
+- R2 の `latest summary` と IndexedDB にキャッシュされた軽量銘柄データ検索
 - 銘柄コード / 銘柄名 / 市場 / 通貨 / 商品種別の表示
 - 株式 / ETF の検索対象化
 - 取得失敗 / 未対応銘柄の表示状態
@@ -681,7 +712,8 @@
 
 ### 対象
 - 銘柄詳細画面のモック価格 / モック指標回収
-- R2 の日足履歴と IndexedDB の軽量データを使った表示
+- R2 の current 日足履歴と IndexedDB の軽量データを使った表示
+- full historical を IndexedDB に全量保存せず、必要な銘柄だけ都度取得する導線
 - lightweight-charts によるローソク足 / 出来高表示
 - 25MA / 75MA
 - 直近高値ライン
@@ -697,6 +729,7 @@
 ### 完了条件
 - 銘柄詳細が本物の日足データで表示される
 - モックチャートとモック指標が残っていない
+- full historical を全量同期しなくても銘柄詳細が成立する
 - 価格データが空の銘柄でも画面が破綻しない
 - モバイル幅とデスクトップ幅でチャートが視認可能
 
@@ -715,6 +748,7 @@
 - ホーム画面のモックカード回収
 - データ最終更新日
 - import job 状態
+- `latest summary` に基づく最新価格・軽量サマリー表示
 - 保有サマリー
 - 今日見る候補
 - 最新 dataset version と同期状態の案内
@@ -745,6 +779,7 @@
 ### 対象
 - スクリーニング画面に残る暫定表示の回収
 - bulk 由来の全対象銘柄ランキング
+- `latest summary` または同等の軽量配信データを使ったランキング生成 / 表示
 - 株式 / ETF を含む対象 universe
 - 価格欠損 / 為替欠損 / 未対応銘柄の除外または表示状態
 - 市場 / 通貨 / 商品種別フィルタ
