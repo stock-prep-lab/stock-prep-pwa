@@ -14,10 +14,8 @@
     "tailwind.config.ts",
     "src/server/**/*.ts",
     "src/data/seedSnapshot.ts",
-    "src/data/stooqBulk.ts"
-  ],
-  "references": [
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/domain" }
+    "src/data/stooqBulk.ts",
+    "../../packages/shared/src/**/*.ts",
+    "../../packages/domain/src/**/*.ts"
   ]
 }

@@ -11,9 +11,5 @@
     },
     "types": ["vite/client"]
   },
-  "include": ["src"],
-  "references": [
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/domain" }
-  ]
+  "include": ["src", "../../packages/shared/src/**/*.ts", "../../packages/domain/src/**/*.ts"]
 }

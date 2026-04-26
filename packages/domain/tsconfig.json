@@ -1,17 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "composite": true,
     "declaration": true,
     "lib": ["ES2022"],
     "noEmit": false,
     "outDir": "dist",
-    "paths": {
-      "@stock-prep/shared": ["../shared/src/index.ts"]
-    },
     "rootDir": "src"
   },
-  "include": ["src"],
-  "references": [{ "path": "../shared" }]
+  "include": ["src"]
 }

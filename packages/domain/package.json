@@ -13,7 +13,9 @@
     }
   },
   "scripts": {
+    "prebuild": "pnpm --filter @stock-prep/shared build",
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "pnpm --filter @stock-prep/shared build",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
