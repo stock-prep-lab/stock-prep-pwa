@@ -5,6 +5,7 @@
 - データ配信責務の詳細は `docs/design/data-delivery.md` を参照する
 - 具体的な更新順序は `docs/design/data-flow.md` を参照する
 - Vercel 入口のセットアップは `docs/setup/vercel-import-setup.md` を参照する
+- Mac worker のセットアップは `docs/setup/mac-launchd-import-worker.md` を参照する
 
 ## 全体方針
 

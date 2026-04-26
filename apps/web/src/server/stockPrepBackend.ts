@@ -10,32 +10,33 @@ import type {
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
 
-import { dummyStockPrepSnapshot } from "../data/seedSnapshot";
-import type { StockPrepMarketDataManifest } from "./stockPrepImport";
+import { dummyStockPrepSnapshot } from "../data/seedSnapshot.js";
+import type { StockPrepMarketDataManifest } from "./stockPrepImport.js";
 import {
   createR2Client,
   deleteObject,
   getJsonObject,
   putBinaryObject,
-  putJsonObject,
-} from "./stockPrepR2";
+} from "./stockPrepR2.js";
 
 type StockPrepServerState = {
   holdingsPayload: HoldingsPayload;
   importJobs: ImportJobRecord[];
   marketDataPayload: MarketDataPayload;
+  rawZipByJobId: Map<string, { rawObjectKey: string; zipBytes: Uint8Array }>;
 };
 
-type DatasetStateRow = {
+export type DatasetStateRow = {
   dataset_version: string;
   generated_at: string;
   id: string;
   latest_manifest_key: string;
   market_data_key: string;
+  status: "failed" | "importing" | "ready";
   updated_at: string;
 };
 
-type ImportJobRow = {
+export type ImportJobRow = {
   daily_price_count: number;
   dataset_version: string | null;
   error_message: string | null;
@@ -44,6 +45,7 @@ type ImportJobRow = {
   finished_at: string | null;
   id: string;
   manifest_key: string | null;
+  raw_object_key: string | null;
   scope_id: ImportJobRecord["scopeId"];
   started_at: string;
   status: ImportJobRecord["status"];
@@ -63,6 +65,10 @@ type CashBalanceRow = {
   amount: number;
   currency: CashBalance["currency"];
   updated_at: string;
+};
+
+export type QueuedImportJob = ImportJobRecord & {
+  rawObjectKey: string;
 };
 
 type StockPrepServerBackend = {
@@ -142,13 +148,13 @@ function createInMemoryBackend(): StockPrepServerBackend {
         fileName,
         scopeId,
         startedAt,
-        status: "running",
+        status: "processing",
       });
 
       state.importJobs = [runningJob, ...state.importJobs].slice(0, 20);
 
       try {
-        const { importBulkScopeFromZip } = await import("./stockPrepImport");
+        const { importBulkScopeFromZip } = await import("./stockPrepImport.js");
         const result = await importBulkScopeFromZip({
           currentMarketData: state.marketDataPayload,
           generatedAt: startedAt,
@@ -163,7 +169,7 @@ function createInMemoryBackend(): StockPrepServerBackend {
           exchangeRateCount: result.summary.exchangeRateCount,
           finishedAt: startedAt,
           manifestKey,
-          status: "succeeded" as const,
+          status: "completed" as const,
           symbolCount: result.summary.symbolCount,
         };
 
@@ -305,147 +311,37 @@ function createRemoteBackend(): StockPrepServerBackend {
     async importMarketZip({ fileName, scopeId, zipBytes }) {
       const startedAt = new Date().toISOString();
       const jobId = crypto.randomUUID();
-      const rawZipKey = `uploads/${buildRunId({ generatedAt: startedAt, scopeId })}/${sanitizePathSegment(fileName)}`;
+      const rawZipKey = buildRawZipKey({ fileName, jobId, scopeId });
+      const queuedJob = createImportJob({
+        fileName,
+        id: jobId,
+        scopeId,
+        startedAt,
+        status: "queued",
+      });
 
-      await insertImportJob({
-        job: createImportJob({
-          fileName,
-          id: jobId,
-          scopeId,
-          startedAt,
-          status: "running",
-        }),
-        supabase,
-      }).catch((error) => {
-        throw wrapSupabaseSchemaError(error);
+      await putBinaryObject({
+        body: zipBytes,
+        contentType: "application/zip",
+        key: rawZipKey,
+        r2,
       });
 
       try {
-        await putBinaryObject({
-          body: zipBytes,
-          contentType: "application/zip",
-          key: rawZipKey,
-          r2,
-        });
-        const { buildLatestSummaryPayload, createEmptyMarketDataPayload, importBulkScopeFromZip } =
-          await import("./stockPrepImport");
-        const [latestManifest, currentMarketData] = await Promise.all([
-          loadLatestDatasetState({ supabase })
-            .then(async (state) =>
-              state
-                ? getJsonObject<StockPrepMarketDataManifest>({
-                    key: state.latest_manifest_key,
-                    r2,
-                  })
-                : null,
-            )
-            .catch(() => null),
-          this.getMarketDataPayload(),
-        ]);
-        const importResult = await importBulkScopeFromZip({
-          currentMarketData:
-            currentMarketData.datasetVersion === defaultMarketDatasetVersion
-              ? createEmptyMarketDataPayload()
-              : currentMarketData,
-          generatedAt: startedAt,
-          referenceSymbols: currentMarketData.symbols,
-          scopeId,
-          zipBytes,
-        });
-        const runId = buildRunId({ generatedAt: startedAt, scopeId });
-        const latestSummary = buildLatestSummaryPayload(importResult.marketData);
-        const latestSummaryKey = `runs/${runId}/latest-summary.json`;
-        const marketDataKey = `runs/${runId}/market-data.json`;
-        const manifestKey = `runs/${runId}/manifest.json`;
-        const manifest: StockPrepMarketDataManifest = {
-          datasetVersion: importResult.marketData.datasetVersion,
-          generatedAt: startedAt,
-          latestSummaryKey,
-          marketDataKey,
-          runId,
-          scopeSummaries: {
-            ...(latestManifest?.scopeSummaries ?? {}),
-            [scopeId]: importResult.summary,
-          },
-        };
-
-        await putJsonObject({
-          body: importResult.marketData,
-          key: marketDataKey,
-          r2,
-        });
-        await putJsonObject({
-          body: latestSummary,
-          key: latestSummaryKey,
-          r2,
-        });
-        await putJsonObject({
-          body: manifest,
-          key: manifestKey,
-          r2,
-        });
-        await putJsonObject({
-          body: manifest,
-          key: "latest/manifest.json",
-          r2,
-        });
-        await persistDatasetState({
-          generatedAt: startedAt,
-          manifestKey: "latest/manifest.json",
-          marketDataKey,
-          supabase,
-          version: importResult.marketData.datasetVersion,
-        });
-
-        const completedJob: ImportJobRecord = {
-          dailyPriceCount: importResult.summary.dailyPriceCount,
-          datasetVersion: importResult.marketData.datasetVersion,
-          errorMessage: undefined,
-          exchangeRateCount: importResult.summary.exchangeRateCount,
-          fileName,
-          finishedAt: startedAt,
-          id: jobId,
-          manifestKey,
-          scopeId,
-          startedAt,
-          status: "succeeded",
-          symbolCount: importResult.summary.symbolCount,
-        };
-
-        await updateImportJob({
-          job: completedJob,
+        await insertImportJob({
+          job: queuedJob,
+          rawObjectKey: rawZipKey,
           supabase,
         });
-
-        return completedJob;
       } catch (error) {
-        const failedJob: ImportJobRecord = {
-          dailyPriceCount: 0,
-          datasetVersion: undefined,
-          errorMessage: error instanceof Error ? error.message : "Import failed.",
-          exchangeRateCount: 0,
-          fileName,
-          finishedAt: startedAt,
-          id: jobId,
-          manifestKey: undefined,
-          scopeId,
-          startedAt,
-          status: "failed",
-          symbolCount: 0,
-        };
-
-        await updateImportJob({
-          job: failedJob,
-          supabase,
-        }).catch(() => undefined);
-
-        throw error;
-      } finally {
         await deleteObject({
           key: rawZipKey,
           r2,
         }).catch(() => undefined);
+        throw wrapSupabaseSchemaError(error);
       }
+
+      return queuedJob;
     },
     async upsertHolding(request) {
       validateHoldingRequest(request);
@@ -504,6 +400,7 @@ function createDefaultServerState(): StockPrepServerState {
       generatedAt: defaultGeneratedAt,
       symbols: structuredClone(dummyStockPrepSnapshot.symbols),
     },
+    rawZipByJobId: new Map(),
   };
 }
 
@@ -546,7 +443,7 @@ function replaceImportJob(jobs: ImportJobRecord[], job: ImportJobRecord): Import
   return [job, ...jobs.filter((candidate) => candidate.id !== job.id)].slice(0, 20);
 }
 
-function hasRemoteMarketDataEnv(): boolean {
+export function hasRemoteMarketDataEnv(): boolean {
   return Boolean(
     process.env.STOCK_PREP_SUPABASE_URL &&
       process.env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY &&
@@ -557,7 +454,7 @@ function hasRemoteMarketDataEnv(): boolean {
   );
 }
 
-function createSupabaseAdminClient(): SupabaseClient {
+export function createSupabaseAdminClient(): SupabaseClient {
   const url = process.env.STOCK_PREP_SUPABASE_URL;
   const key = process.env.STOCK_PREP_SUPABASE_SERVICE_ROLE_KEY;
 
@@ -573,7 +470,7 @@ function createSupabaseAdminClient(): SupabaseClient {
   });
 }
 
-async function loadLatestDatasetState({
+export async function loadLatestDatasetState({
   supabase,
 }: {
   supabase: SupabaseClient;
@@ -643,21 +540,99 @@ async function loadCashBalances({
   return ((data ?? []) as CashBalanceRow[]).map(mapCashBalanceRow);
 }
 
-async function insertImportJob({
-  job,
+export async function claimNextQueuedImportJob({
   supabase,
 }: {
-  job: ImportJobRecord;
+  supabase: SupabaseClient;
+}): Promise<QueuedImportJob | null> {
+  while (true) {
+    const { data, error } = await supabase
+      .from(supabaseTableNames.importJobs)
+      .select("*")
+      .eq("status", "queued")
+      .order("started_at", { ascending: true })
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    const row = ((data ?? []) as ImportJobRow[]).at(0);
+
+    if (!row) {
+      return null;
+    }
+
+    const { data: claimedRow, error: updateError } = await supabase
+      .from(supabaseTableNames.importJobs)
+      .update({
+        status: "processing",
+      })
+      .eq("id", row.id)
+      .eq("status", "queued")
+      .select("*")
+      .maybeSingle();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    if (!claimedRow) {
+      continue;
+    }
+
+    const mappedRow = claimedRow as ImportJobRow;
+
+    if (!mappedRow.raw_object_key) {
+      throw new Error(`import job に raw_object_key がありません: ${mappedRow.id}`);
+    }
+
+    return {
+      ...mapImportJobRow(mappedRow),
+      rawObjectKey: mappedRow.raw_object_key,
+    };
+  }
+}
+
+export async function updateDatasetStateStatus({
+  status,
+  supabase,
+}: {
+  status: DatasetStateRow["status"];
   supabase: SupabaseClient;
 }): Promise<void> {
-  const { error } = await supabase.from(supabaseTableNames.importJobs).insert(mapImportJobRecord(job));
+  const { error } = await supabase
+    .from(supabaseTableNames.datasetState)
+    .update({
+      status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", latestDatasetStateId);
 
   if (error) {
     throw error;
   }
 }
 
-async function updateImportJob({
+async function insertImportJob({
+  job,
+  rawObjectKey,
+  supabase,
+}: {
+  job: ImportJobRecord;
+  rawObjectKey?: string;
+  supabase: SupabaseClient;
+}): Promise<void> {
+  const { error } = await supabase
+    .from(supabaseTableNames.importJobs)
+    .insert(mapImportJobRecord(job, { rawObjectKey }));
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function updateImportJob({
   job,
   supabase,
 }: {
@@ -674,16 +649,18 @@ async function updateImportJob({
   }
 }
 
-async function persistDatasetState({
+export async function persistDatasetState({
   generatedAt,
   manifestKey,
   marketDataKey,
+  status = "ready",
   supabase,
   version,
 }: {
   generatedAt: string;
   manifestKey: string;
   marketDataKey: string;
+  status?: DatasetStateRow["status"];
   supabase: SupabaseClient;
   version: string;
 }): Promise<void> {
@@ -693,6 +670,7 @@ async function persistDatasetState({
     id: latestDatasetStateId,
     latest_manifest_key: manifestKey,
     market_data_key: marketDataKey,
+    status,
     updated_at: generatedAt,
   });
 
@@ -715,17 +693,10 @@ async function upsertHoldingRow({
   }
 }
 
-function buildRunId({
-  generatedAt,
-  scopeId,
-}: {
-  generatedAt: string;
-  scopeId: ImportJobRecord["scopeId"];
-}): string {
-  return `${generatedAt.replace(/[:.]/g, "-")}-${scopeId.toLowerCase()}`;
-}
-
-function mapImportJobRecord(job: ImportJobRecord): ImportJobRow {
+function mapImportJobRecord(
+  job: ImportJobRecord,
+  { rawObjectKey }: { rawObjectKey?: string } = {},
+): ImportJobRow {
   return {
     daily_price_count: job.dailyPriceCount,
     dataset_version: job.datasetVersion ?? null,
@@ -735,6 +706,7 @@ function mapImportJobRecord(job: ImportJobRecord): ImportJobRow {
     finished_at: job.finishedAt ?? null,
     id: job.id,
     manifest_key: job.manifestKey ?? null,
+    raw_object_key: rawObjectKey ?? null,
     scope_id: job.scopeId,
     started_at: job.startedAt,
     status: job.status,
@@ -793,7 +765,19 @@ function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
 
-function wrapSupabaseSchemaError(error: unknown): Error {
+export function buildRawZipKey({
+  fileName,
+  jobId,
+  scopeId,
+}: {
+  fileName: string;
+  jobId: string;
+  scopeId: ImportJobRecord["scopeId"];
+}): string {
+  return `incoming/${scopeId.toLowerCase()}/${jobId}-${sanitizePathSegment(fileName)}`;
+}
+
+export function wrapSupabaseSchemaError(error: unknown): Error {
   const message =
     error instanceof Error
       ? error.message

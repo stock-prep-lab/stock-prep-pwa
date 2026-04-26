@@ -107,6 +107,44 @@ export async function getJsonObject<T>({
   }
 }
 
+export async function getBinaryObject({
+  key,
+  r2,
+}: {
+  key: string;
+  r2: S3Client;
+}): Promise<Uint8Array> {
+  const bucket = getBucketName();
+
+  try {
+    const response = await r2.send(
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+    );
+    const bytes = await response.Body?.transformToByteArray();
+
+    if (!bytes || bytes.length === 0) {
+      throw new Error(`R2 object was empty: ${key}`);
+    }
+
+    return bytes;
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      ("name" in error || "$metadata" in error) &&
+      ((error as { name?: string }).name === "NoSuchKey" ||
+        (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404)
+    ) {
+      throw new Error(`R2 object was not found: ${key}`);
+    }
+
+    throw error;
+  }
+}
+
 export async function deleteObject({
   key,
   r2,

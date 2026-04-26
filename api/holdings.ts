@@ -1,7 +1,7 @@
 import {
   handleGetHoldingsRequest,
   handleUpsertHoldingRequest,
-} from "../apps/web/src/server/stockPrepApiHandlers";
+} from "../apps/web/src/server/stockPrepApiHandlers.js";
 
 export default {
   async fetch(request: Request): Promise<Response> {

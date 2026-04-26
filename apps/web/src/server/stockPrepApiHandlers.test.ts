@@ -81,11 +81,11 @@ describe("stockPrepApiHandlers", () => {
     const jobsPayload = await handleListImportJobsRequest();
     const marketDataPayload = await handleMarketDataRequest();
 
-    expect(job.status).toBe("succeeded");
+    expect(job.status).toBe("completed");
     expect(jobsPayload.jobs[0]).toMatchObject({
       fileName: "d_jp_txt.zip",
       scopeId: "JP",
-      status: "succeeded",
+      status: "completed",
       symbolCount: 1,
     });
     expect(marketDataPayload.datasetVersion).toContain("market-data-");

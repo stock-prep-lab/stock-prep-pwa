@@ -647,11 +647,51 @@
 
 ---
 
+## Slice 17.7: direct-to-R2 upload のクライアント実装
+
+### 対象
+- 管理画面から raw ZIP を Cloudflare R2 へ直接アップロードするクライアント導線
+- Vercel API で presigned upload URL または同等の一時アップロード権限を払い出す処理
+- R2 直接アップロード後に `import_jobs` を `queued` で作成する処理
+- アップロード進捗、成功、失敗を管理画面で表示する UI 更新
+- 大きい ZIP を Vercel Function 本体へ直接 POST しない運用への切り替え
+
+### 非対象
+- Mac `launchd` worker の実装変更
+- Windows / Linux 用 worker 実装
+- Cloud Run / GitHub Actions などクラウド runner への移植
+- 通知送信
+
+### 完了条件
+- 管理画面から市場別 ZIP を選んで R2 へ直接アップロードできる
+- Vercel は upload URL 発行と `import_jobs` 作成の入口として動く
+- 大きい ZIP を Vercel Function の request body に載せずに取り込み開始できる
+- アップロード成功後に `queued` job が作成され、17.6 の worker から処理できる
+- 実 ZIP 5 本（`jp` / `us` / `uk` / `hk` / `world`）で取り込み導線が通る
+- R2 の object key と cleanup が想定どおりに動き、raw ZIP と current データの扱いを確認できる
+- worker 失敗時に `import_jobs` が `failed` になり、失敗理由を確認できる
+- `launchd` の定期実行で queue polling と job 実行が安定して回る
+- 管理画面の進捗表示で upload / queue / 処理結果が分かりやすく確認できる
+- モバイル幅とデスクトップ幅の両方でアップロード操作が成立する
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- upload URL 発行ロジックのユニットテストを追加
+- 管理画面から実 ZIP 5 本をアップロードして `queued` job 作成から worker 完了まで確認
+- R2 の object key / cleanup を実環境で確認
+- 失敗系 1 件を流して `failed` 記録と error message を確認
+- `launchd` 登録後の定期実行ログ確認
+- モバイル幅 / デスクトップ幅で進捗 UI の確認
+
+---
+
 ## Slice 18: 銘柄マスタ / 検索の本物データ化
 
 ### 対象
 - 検索画面のダミー検索結果回収
-- R2 / IndexedDB にキャッシュされた軽量銘柄データ検索
+- R2 の `latest summary` と IndexedDB にキャッシュされた軽量銘柄データ検索
 - 銘柄コード / 銘柄名 / 市場 / 通貨 / 商品種別の表示
 - 株式 / ETF の検索対象化
 - 取得失敗 / 未対応銘柄の表示状態
@@ -681,7 +721,8 @@
 
 ### 対象
 - 銘柄詳細画面のモック価格 / モック指標回収
-- R2 の日足履歴と IndexedDB の軽量データを使った表示
+- R2 の current 日足履歴と IndexedDB の軽量データを使った表示
+- full historical を IndexedDB に全量保存せず、必要な銘柄だけ都度取得する導線
 - lightweight-charts によるローソク足 / 出来高表示
 - 25MA / 75MA
 - 直近高値ライン
@@ -697,6 +738,7 @@
 ### 完了条件
 - 銘柄詳細が本物の日足データで表示される
 - モックチャートとモック指標が残っていない
+- full historical を全量同期しなくても銘柄詳細が成立する
 - 価格データが空の銘柄でも画面が破綻しない
 - モバイル幅とデスクトップ幅でチャートが視認可能
 
@@ -715,6 +757,7 @@
 - ホーム画面のモックカード回収
 - データ最終更新日
 - import job 状態
+- `latest summary` に基づく最新価格・軽量サマリー表示
 - 保有サマリー
 - 今日見る候補
 - 最新 dataset version と同期状態の案内
@@ -745,6 +788,7 @@
 ### 対象
 - スクリーニング画面に残る暫定表示の回収
 - bulk 由来の全対象銘柄ランキング
+- `latest summary` または同等の軽量配信データを使ったランキング生成 / 表示
 - 株式 / ETF を含む対象 universe
 - 価格欠損 / 為替欠損 / 未対応銘柄の除外または表示状態
 - 市場 / 通貨 / 商品種別フィルタ
@@ -894,6 +938,42 @@
 - 本番クラウド構成の変更
 - 新しい画面追加
 - Push 通知や PWA 機能の拡張
+
+---
+
+## Slice 27: runtime 境界整理と構成リファクタ
+
+### 対象
+- 機能変更なしの構成リファクタ
+- server / client / worker の runtime 境界整理
+- `api/*` から参照する server-side コードの配置整理
+- package 境界の見直しと必要な共通ロジックの package 移設
+- bundler / module 解決方針の見直し
+- Node ESM runtime 前提での import / build / deploy 構成整理
+- setup / architecture 文書の更新
+
+### 非対象
+- UI / UX の変更
+- 新しい機能追加
+- データモデル変更
+- API 契約変更
+- import / screening / notification など既存機能の挙動変更
+
+### 完了条件
+- ユーザーから見える挙動が変わっていない
+- `api/*` / worker / app の runtime 境界が今より明確になっている
+- deep relative import や runtime 依存の曖昧な import が整理されている
+- package 境界と bundler 方針が文書で説明できる
+- Vercel / Mac worker / ローカル開発の各実行経路で import 解決が安定している
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
+- 主要 API の疎通確認
+- 主要画面の smoke 確認
+- 既存の import / worker / 通知導線で挙動差分がないことを確認
 
 ### 完了条件
 - Docker を使ってローカルだけで DB / object storage / API を起動できる

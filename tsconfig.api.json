@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "composite": true,
+    "lib": ["ES2022"],
+    "paths": {
+      "@stock-prep/domain": ["packages/domain/src/index.ts"],
+      "@stock-prep/shared": ["packages/shared/src/index.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": [
+    "api/**/*.ts",
+    "apps/web/src/server/**/*.ts",
+    "apps/web/src/data/seedSnapshot.ts",
+    "apps/web/src/data/stooqBulk.ts"
+  ]
+}

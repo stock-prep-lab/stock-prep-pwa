@@ -1,4 +1,7 @@
-import { handleImportMarketZipRequest, handleListImportJobsRequest } from "../../apps/web/src/server/stockPrepApiHandlers";
+import {
+  handleImportMarketZipRequest,
+  handleListImportJobsRequest,
+} from "../../apps/web/src/server/stockPrepApiHandlers.js";
 import type { ImportJobRecord } from "@stock-prep/shared";
 
 function isScopeId(value: string): value is ImportJobRecord["scopeId"] {
