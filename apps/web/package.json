@@ -6,9 +6,11 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "dev": "vite",
+    "prebuild": "pnpm --filter @stock-prep/shared build && pnpm --filter @stock-prep/domain build",
     "pretest": "pnpm --filter @stock-prep/shared build && pnpm --filter @stock-prep/domain build",
     "preview": "vite preview",
     "test": "vitest run",
+    "pretypecheck": "pnpm --filter @stock-prep/shared build && pnpm --filter @stock-prep/domain build",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
