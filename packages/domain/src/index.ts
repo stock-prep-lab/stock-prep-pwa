@@ -1077,8 +1077,8 @@ function findLatestJpyConversionRate(
     GBP: "GBPJPY",
     HKD: "HKDJPY",
     USD: "USDJPY",
-  } as const;
-  const pair = pairByCurrency[currency];
+  } satisfies Record<Exclude<CurrencyCode, "JPY">, ExchangeRateBar["pair"]>;
+  const pair = pairByCurrency[currency as Exclude<CurrencyCode, "JPY">];
   const latestRate = exchangeRates
     .filter((rate) => rate.pair === pair && isPositiveFinite(rate.close))
     .sort((left, right) => right.date.localeCompare(left.date))
