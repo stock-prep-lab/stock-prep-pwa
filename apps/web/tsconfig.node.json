@@ -10,5 +10,9 @@
     "src/server/**/*.ts",
     "src/data/seedSnapshot.ts",
     "src/data/stooqBulk.ts"
+  ],
+  "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/domain" }
   ]
 }
