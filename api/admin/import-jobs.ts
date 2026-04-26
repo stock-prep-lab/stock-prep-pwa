@@ -4,13 +4,21 @@ import {
   handleImportMarketZipRequest,
   handleListImportJobsRequest,
 } from "../../apps/web/src/server/stockPrepApiHandlers.js";
-import type {
-  CreateImportUploadSessionRequest,
-  FinalizeImportUploadRequest,
-  ImportJobRecord,
-} from "@stock-prep/shared";
 
-function isScopeId(value: string): value is ImportJobRecord["scopeId"] {
+type ImportScopeId = "FX" | "HK" | "JP" | "UK" | "US";
+
+type CreateImportUploadSessionRequestBody = {
+  contentType: string;
+  fileName: string;
+  fileSize: number;
+  scopeId: ImportScopeId;
+};
+
+type FinalizeImportUploadRequestBody = {
+  finalizeToken: string;
+};
+
+function isScopeId(value: string): value is ImportScopeId {
   return value === "FX" || value === "HK" || value === "JP" || value === "UK" || value === "US";
 }
 
@@ -34,8 +42,8 @@ export default {
 
     if (contentType.includes("application/json")) {
       const body = (await request.json()) as
-        | ({ action: "prepare-upload" } & CreateImportUploadSessionRequest)
-        | ({ action: "finalize-upload" } & FinalizeImportUploadRequest);
+        | ({ action: "prepare-upload" } & CreateImportUploadSessionRequestBody)
+        | ({ action: "finalize-upload" } & FinalizeImportUploadRequestBody);
 
       if (body.action === "prepare-upload") {
         if (typeof body.scopeId !== "string" || !isScopeId(body.scopeId)) {

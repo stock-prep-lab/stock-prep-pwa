@@ -2,7 +2,12 @@ import {
   handleGetHoldingsRequest,
   handleUpsertHoldingRequest,
 } from "../apps/web/src/server/stockPrepApiHandlers.js";
-import type { UpsertHoldingRequest } from "@stock-prep/shared";
+
+type UpsertHoldingRequest = {
+  averagePrice: number;
+  quantity: number;
+  symbolId: string;
+};
 
 export default {
   async fetch(request: Request): Promise<Response> {
