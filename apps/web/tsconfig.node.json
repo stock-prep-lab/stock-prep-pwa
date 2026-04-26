@@ -1,7 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "baseUrl": ".",
     "composite": true,
+    "paths": {
+      "@stock-prep/domain": ["../../packages/domain/src/index.ts"],
+      "@stock-prep/shared": ["../../packages/shared/src/index.ts"]
+    },
     "types": ["node"]
   },
   "include": [
