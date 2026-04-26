@@ -939,6 +939,42 @@
 - 新しい画面追加
 - Push 通知や PWA 機能の拡張
 
+---
+
+## Slice 27: runtime 境界整理と構成リファクタ
+
+### 対象
+- 機能変更なしの構成リファクタ
+- server / client / worker の runtime 境界整理
+- `api/*` から参照する server-side コードの配置整理
+- package 境界の見直しと必要な共通ロジックの package 移設
+- bundler / module 解決方針の見直し
+- Node ESM runtime 前提での import / build / deploy 構成整理
+- setup / architecture 文書の更新
+
+### 非対象
+- UI / UX の変更
+- 新しい機能追加
+- データモデル変更
+- API 契約変更
+- import / screening / notification など既存機能の挙動変更
+
+### 完了条件
+- ユーザーから見える挙動が変わっていない
+- `api/*` / worker / app の runtime 境界が今より明確になっている
+- deep relative import や runtime 依存の曖昧な import が整理されている
+- package 境界と bundler 方針が文書で説明できる
+- Vercel / Mac worker / ローカル開発の各実行経路で import 解決が安定している
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
+- 主要 API の疎通確認
+- 主要画面の smoke 確認
+- 既存の import / worker / 通知導線で挙動差分がないことを確認
+
 ### 完了条件
 - Docker を使ってローカルだけで DB / object storage / API を起動できる
 - ローカル import 処理と最新データ API が、クラウド環境を触らずに確認できる
