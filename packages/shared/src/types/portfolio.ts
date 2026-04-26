@@ -1,5 +1,9 @@
-import type { CurrencyCode } from "./core";
-import type { DailyPriceBar, ExchangeRateBar, StoredStockSymbol } from "./marketData";
+import type { CurrencyCode } from "./core.js";
+import type {
+  DailyPriceBar,
+  ExchangeRateBar,
+  StoredStockSymbol,
+} from "./marketData.js";
 const TYPE_MARKER = undefined as never;
 
 export type PortfolioHolding = {
