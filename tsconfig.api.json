@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": [
+    "api/**/*.ts",
+    "apps/web/src/server/**/*.ts",
+    "apps/web/src/data/seedSnapshot.ts",
+    "apps/web/src/data/stooqBulk.ts"
+  ]
+}
