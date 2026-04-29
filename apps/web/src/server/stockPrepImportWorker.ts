@@ -17,6 +17,7 @@ import {
   importBulkScopeFromZip,
   type StockPrepMarketDataManifest,
 } from "./stockPrepImport.js";
+import { forEachWithConcurrency } from "./asyncConcurrency.js";
 import { loadPersistedMarketData, planPersistedMarketData } from "./stockPrepMarketDataStorage.js";
 import {
   createR2Client,
@@ -29,6 +30,7 @@ import {
 const currentManifestKey = "current/manifest.json";
 const currentMarketDataKey = "current/market-data.json";
 const currentLatestSummaryKey = "current/latest-summary.json";
+const artifactDeleteConcurrency = 4;
 
 type PersistedCurrentArtifacts = {
   manifest: StockPrepMarketDataManifest | null;
@@ -210,9 +212,13 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
       ];
       currentArtifactKeys = [];
 
-      await Promise.all(
-        [...new Set(keys)].map((key) => deleteObject({ key, r2 }).catch(() => undefined)),
-      );
+      await forEachWithConcurrency({
+        concurrency: artifactDeleteConcurrency,
+        items: [...new Set(keys)],
+        worker: async (key) => {
+          await deleteObject({ key, r2 }).catch(() => undefined);
+        },
+      });
     },
     async deleteRawZip(rawObjectKey) {
       await deleteObject({

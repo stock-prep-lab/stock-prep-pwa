@@ -5,7 +5,10 @@ import type {
   StoredStockSymbol,
 } from "@stock-prep/shared";
 
+import { mapWithConcurrency } from "./asyncConcurrency.js";
+
 const defaultDailyPriceChunkSize = 20_000;
+const defaultLoadChunkConcurrency = 4;
 
 type ChunkedMarketDataArtifact = {
   datasetVersion: string;
@@ -75,9 +78,11 @@ export function planPersistedMarketData({
 }
 
 export async function loadPersistedMarketData({
+  chunkConcurrency = defaultLoadChunkConcurrency,
   key,
   readJson,
 }: {
+  chunkConcurrency?: number;
   key: string;
   readJson: <T>(key: string) => Promise<T>;
 }): Promise<{
@@ -96,7 +101,11 @@ export async function loadPersistedMarketData({
   const [symbols, exchangeRates, dailyPriceChunks] = await Promise.all([
     readJson<StoredStockSymbol[]>(root.symbolsKey),
     readJson<ExchangeRateBar[]>(root.exchangeRatesKey),
-    Promise.all(root.dailyPriceChunkKeys.map((chunkKey) => readJson<DailyPriceBar[]>(chunkKey))),
+    mapWithConcurrency({
+      concurrency: chunkConcurrency,
+      items: root.dailyPriceChunkKeys,
+      mapper: (chunkKey) => readJson<DailyPriceBar[]>(chunkKey),
+    }),
   ]);
 
   return {
