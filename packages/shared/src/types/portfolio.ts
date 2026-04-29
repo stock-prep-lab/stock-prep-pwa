@@ -4,7 +4,6 @@ import type {
   ExchangeRateBar,
   StoredStockSymbol,
 } from "./marketData.js";
-const TYPE_MARKER = undefined as never;
 
 export type PortfolioHolding = {
   id: string;
@@ -14,14 +13,12 @@ export type PortfolioHolding = {
   currency: CurrencyCode;
   updatedAt: string;
 };
-export const PortfolioHolding = TYPE_MARKER as PortfolioHolding;
 
 export type CashBalance = {
   currency: CurrencyCode;
   amount: number;
   updatedAt: string;
 };
-export const CashBalance = TYPE_MARKER as CashBalance;
 
 export type StockPrepSnapshot = {
   cashBalances: CashBalance[];
@@ -30,7 +27,6 @@ export type StockPrepSnapshot = {
   holdings: PortfolioHolding[];
   symbols: StoredStockSymbol[];
 };
-export const StockPrepSnapshot = TYPE_MARKER as StockPrepSnapshot;
 
 export type MarketDataPayload = Pick<
   StockPrepSnapshot,
@@ -39,16 +35,13 @@ export type MarketDataPayload = Pick<
   datasetVersion: string;
   generatedAt: string;
 };
-export const MarketDataPayload = TYPE_MARKER as MarketDataPayload;
 
 export type HoldingsPayload = Pick<StockPrepSnapshot, "cashBalances" | "holdings"> & {
   updatedAt: string;
 };
-export const HoldingsPayload = TYPE_MARKER as HoldingsPayload;
 
 export type UpsertHoldingRequest = {
   averagePrice: number;
   quantity: number;
   symbolId: string;
 };
-export const UpsertHoldingRequest = TYPE_MARKER as UpsertHoldingRequest;

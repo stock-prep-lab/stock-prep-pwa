@@ -1,15 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "composite": true,
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "paths": {
-      "@stock-prep/domain": ["../../packages/domain/src/index.ts"],
-      "@stock-prep/shared": ["../../packages/shared/src/index.ts"]
-    },
     "types": ["vite/client"]
   },
-  "include": ["src", "../../packages/shared/src/**/*.ts", "../../packages/domain/src/**/*.ts"]
+  "include": ["src"]
 }

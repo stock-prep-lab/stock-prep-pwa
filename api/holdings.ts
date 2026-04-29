@@ -3,12 +3,6 @@ import {
   handleUpsertHoldingRequest,
 } from "../apps/web/src/server/stockPrepApiHandlers.js";
 
-type UpsertHoldingRequest = {
-  averagePrice: number;
-  quantity: number;
-  symbolId: string;
-};
-
 export default {
   async fetch(request: Request): Promise<Response> {
     if (request.method === "GET") {
@@ -16,9 +10,7 @@ export default {
     }
 
     if (request.method === "PUT") {
-      return Response.json(
-        await handleUpsertHoldingRequest((await request.json()) as UpsertHoldingRequest),
-      );
+      return Response.json(await handleUpsertHoldingRequest(await request.json()));
     }
 
     return new Response(JSON.stringify({ error: "Method Not Allowed" }), {

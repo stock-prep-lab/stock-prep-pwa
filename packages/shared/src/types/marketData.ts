@@ -4,14 +4,12 @@ import type {
   RegionCode,
   SecurityType,
 } from "./core.js";
-const TYPE_MARKER = undefined as never;
 
 export type StockSymbol = {
   code: string;
   name: string;
   region: RegionCode;
 };
-export const StockSymbol = TYPE_MARKER as StockSymbol;
 
 export type StoredStockSymbol = StockSymbol & {
   id: string;
@@ -21,7 +19,6 @@ export type StoredStockSymbol = StockSymbol & {
   securityType?: SecurityType;
   unsupportedReason?: string;
 };
-export const StoredStockSymbol = TYPE_MARKER as StoredStockSymbol;
 
 export type DailyPriceBar = {
   id: string;
@@ -36,7 +33,6 @@ export type DailyPriceBar = {
   close: number;
   volume: number;
 };
-export const DailyPriceBar = TYPE_MARKER as DailyPriceBar;
 
 export type ExchangeRateBar = {
   id: string;
@@ -46,7 +42,6 @@ export type ExchangeRateBar = {
   date: string;
   close: number;
 };
-export const ExchangeRateBar = TYPE_MARKER as ExchangeRateBar;
 
 export type LatestSymbolSummary = Pick<
   StoredStockSymbol,
@@ -55,13 +50,11 @@ export type LatestSymbolSummary = Pick<
   lastClose: number | null;
   lastCloseDate: string | null;
 };
-export const LatestSymbolSummary = TYPE_MARKER as LatestSymbolSummary;
 
 export type LatestExchangeRateSummary = Pick<
   ExchangeRateBar,
   "baseCurrency" | "close" | "date" | "pair" | "quoteCurrency"
 >;
-export const LatestExchangeRateSummary = TYPE_MARKER as LatestExchangeRateSummary;
 
 export type LatestSummaryPayload = {
   datasetVersion: string;
@@ -69,4 +62,3 @@ export type LatestSummaryPayload = {
   generatedAt: string;
   symbols: LatestSymbolSummary[];
 };
-export const LatestSummaryPayload = TYPE_MARKER as LatestSummaryPayload;
