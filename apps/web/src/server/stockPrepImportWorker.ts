@@ -3,8 +3,10 @@ import type { ImportJobRecord, MarketDataPayload } from "@stock-prep/shared";
 import {
   claimNextQueuedImportJob,
   createSupabaseAdminClient,
+  getImportJobHeartbeatIntervalMs,
   loadLatestDatasetState,
   persistDatasetState,
+  touchImportJobHeartbeat,
   updateDatasetStateStatus,
   updateImportJob,
   type QueuedImportJob,
@@ -47,6 +49,7 @@ export type StockPrepImportWorkerStore = {
     manifest: StockPrepMarketDataManifest;
     marketData: MarketDataPayload;
   }): Promise<void>;
+  touchJobHeartbeat(jobId: string): Promise<void>;
 };
 
 export type StockPrepImportWorkerRunResult = {
@@ -95,15 +98,21 @@ export async function runStockPrepImportWorker({
 }
 
 export async function processClaimedImportJob({
+  heartbeatIntervalMs = getImportJobHeartbeatIntervalMs(),
   job,
   now = () => new Date().toISOString(),
   store,
 }: {
+  heartbeatIntervalMs?: number;
   job: QueuedImportJob;
   now?: () => string;
   store: StockPrepImportWorkerStore;
 }): Promise<ImportJobRecord> {
   await store.markDatasetStateImporting().catch(() => undefined);
+  const heartbeatHandle = setInterval(() => {
+    void store.touchJobHeartbeat(job.id).catch(() => undefined);
+  }, heartbeatIntervalMs);
+  heartbeatHandle.unref?.();
 
   try {
     const [currentArtifacts, zipBytes] = await Promise.all([
@@ -178,6 +187,8 @@ export async function processClaimedImportJob({
     await store.deleteRawZip(job.rawObjectKey).catch(() => undefined);
 
     return failedJob;
+  } finally {
+    clearInterval(heartbeatHandle);
   }
 }
 
@@ -286,6 +297,12 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
         status: "ready",
         supabase,
         version: marketData.datasetVersion,
+      });
+    },
+    async touchJobHeartbeat(jobId) {
+      await touchImportJobHeartbeat({
+        jobId,
+        supabase,
       });
     },
   };

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  appendStooqBulkFileToAccumulator,
   buildStooqBulkDownloadUrl,
+  createStooqBulkNormalizationAccumulator,
+  finalizeStooqBulkNormalizationAccumulator,
   normalizeStooqBulkData,
   parseStooqAsciiDailyPriceText,
   resolveBulkCategoryRule,
@@ -224,6 +227,62 @@ describe("stooqBulk", () => {
         path: "data/daily/us/nasdaq stocks/aapl.us.txt",
         reason: "Unexpected ASCII columns for aapl.us.",
         sourceSymbol: "aapl.us",
+      },
+    ]);
+  });
+
+  it("supports incremental normalization without holding every file at once", () => {
+    const accumulator = createStooqBulkNormalizationAccumulator({
+      targets: [
+        createTarget(),
+        createTarget({
+          code: "9984",
+          name: "ソフトバンクグループ",
+          sourceSymbol: "9984.jp",
+        }),
+      ],
+    });
+
+    appendStooqBulkFileToAccumulator({
+      accumulator,
+      file: {
+        content: "2026-04-17,3138,3240,3112,3218,28430000",
+        path: "data/daily/jp/tse stocks/7203.jp.txt",
+      },
+    });
+    appendStooqBulkFileToAccumulator({
+      accumulator,
+      file: {
+        content: "",
+        path: "data/daily/jp/tse stocks/9984.jp.txt",
+      },
+    });
+
+    const result = finalizeStooqBulkNormalizationAccumulator(accumulator);
+
+    expect(result.histories.map((history) => history.sourceSymbol)).toEqual(["7203.jp"]);
+    expect(result.symbols).toEqual([
+      {
+        code: "7203",
+        currency: "JPY",
+        id: "jp-7203",
+        importStatus: "imported",
+        instrumentType: "stock",
+        name: "トヨタ自動車",
+        region: "JP",
+        source: "stooq",
+        sourceSymbol: "7203.jp",
+      },
+      {
+        code: "9984",
+        currency: "JPY",
+        id: "jp-9984",
+        importStatus: "noData",
+        instrumentType: "stock",
+        name: "ソフトバンクグループ",
+        region: "JP",
+        source: "stooq",
+        sourceSymbol: "9984.jp",
       },
     ]);
   });

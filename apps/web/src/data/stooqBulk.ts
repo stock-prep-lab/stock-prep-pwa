@@ -49,6 +49,13 @@ export type StooqBulkNormalizationResult = {
   symbols: StooqNormalizedSymbol[];
 };
 
+export type StooqBulkNormalizationAccumulator = {
+  failures: StooqBulkFailure[];
+  histories: StooqNormalizedPriceHistoryFile[];
+  symbolsBySourceSymbol: Map<string, StooqNormalizedSymbol>;
+  targetsBySourceSymbol: Map<string, StooqBulkImportTarget>;
+};
+
 export type StooqBulkFile = {
   content: string;
   path: string;
@@ -193,8 +200,20 @@ export function normalizeStooqBulkData({
   files: StooqBulkFile[];
   targets: readonly StooqBulkImportTarget[];
 }): StooqBulkNormalizationResult {
-  const failures: StooqBulkFailure[] = [];
-  const histories: StooqNormalizedPriceHistoryFile[] = [];
+  const accumulator = createStooqBulkNormalizationAccumulator({ targets });
+
+  for (const file of files) {
+    appendStooqBulkFileToAccumulator({ accumulator, file });
+  }
+
+  return finalizeStooqBulkNormalizationAccumulator(accumulator);
+}
+
+export function createStooqBulkNormalizationAccumulator({
+  targets,
+}: {
+  targets: readonly StooqBulkImportTarget[];
+}): StooqBulkNormalizationAccumulator {
   const symbolsBySourceSymbol = new Map<string, StooqNormalizedSymbol>();
   const targetsBySourceSymbol = new Map(
     targets.map((target) => [normalizeSourceSymbol(target.sourceSymbol), target]),
@@ -209,85 +228,104 @@ export function normalizeStooqBulkData({
     });
   }
 
-  for (const file of files) {
-    const sourceSymbol = normalizeSourceSymbol(resolveSourceSymbolFromPath(file.path));
-    const matchedTarget = targetsBySourceSymbol.get(sourceSymbol);
-    const rule = resolveBulkCategoryRule(file.path);
+  return {
+    failures: [],
+    histories: [],
+    symbolsBySourceSymbol,
+    targetsBySourceSymbol,
+  };
+}
 
-    if (!matchedTarget && (!rule || rule.kind === "unsupported")) {
-      continue;
-    }
+export function appendStooqBulkFileToAccumulator({
+  accumulator,
+  file,
+}: {
+  accumulator: StooqBulkNormalizationAccumulator;
+  file: StooqBulkFile;
+}): void {
+  const sourceSymbol = normalizeSourceSymbol(resolveSourceSymbolFromPath(file.path));
+  const matchedTarget = accumulator.targetsBySourceSymbol.get(sourceSymbol);
+  const rule = resolveBulkCategoryRule(file.path);
 
-    if (rule?.kind === "unsupported") {
-      if (matchedTarget) {
-        symbolsBySourceSymbol.set(sourceSymbol, {
-          ...matchedTarget,
-          id: buildBulkSymbolId(matchedTarget),
-          importStatus: "unsupported",
-          lastImportError: rule.reason,
-          source: "stooq",
-        });
-      }
-      continue;
-    }
-
-    if (!matchedTarget) {
-      failures.push({
-        path: file.path,
-        reason: `No import target was registered for ${sourceSymbol}.`,
-        sourceSymbol,
-      });
-      continue;
-    }
-
-    try {
-      const bars = parseStooqAsciiDailyPriceText(file.content, matchedTarget);
-
-      if (bars.length === 0) {
-        symbolsBySourceSymbol.set(sourceSymbol, {
-          ...matchedTarget,
-          id: buildBulkSymbolId(matchedTarget),
-          importStatus: "noData",
-          source: "stooq",
-        });
-        continue;
-      }
-
-      histories.push({
-        bars,
-        currency: matchedTarget.currency,
-        instrumentType: resolveInstrumentTypeFromRule(rule, matchedTarget),
-        region: matchedTarget.region,
-        sourceSymbol: matchedTarget.sourceSymbol,
-        symbolId: buildBulkSymbolId(matchedTarget),
-      });
-      symbolsBySourceSymbol.set(sourceSymbol, {
-        ...matchedTarget,
-        id: buildBulkSymbolId(matchedTarget),
-        importStatus: "imported",
-        source: "stooq",
-      });
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "Unknown bulk parsing error.";
-      failures.push({
-        path: file.path,
-        reason,
-        sourceSymbol,
-      });
-      symbolsBySourceSymbol.set(sourceSymbol, {
-        ...matchedTarget,
-        id: buildBulkSymbolId(matchedTarget),
-        importStatus: "failed",
-        lastImportError: reason,
-        source: "stooq",
-      });
-    }
+  if (!matchedTarget && (!rule || rule.kind === "unsupported")) {
+    return;
   }
 
+  if (rule?.kind === "unsupported") {
+    if (matchedTarget) {
+      accumulator.symbolsBySourceSymbol.set(sourceSymbol, {
+        ...matchedTarget,
+        id: buildBulkSymbolId(matchedTarget),
+        importStatus: "unsupported",
+        lastImportError: rule.reason,
+        source: "stooq",
+      });
+    }
+    return;
+  }
+
+  if (!matchedTarget) {
+    accumulator.failures.push({
+      path: file.path,
+      reason: `No import target was registered for ${sourceSymbol}.`,
+      sourceSymbol,
+    });
+    return;
+  }
+
+  try {
+    const bars = parseStooqAsciiDailyPriceText(file.content, matchedTarget);
+
+    if (bars.length === 0) {
+      accumulator.symbolsBySourceSymbol.set(sourceSymbol, {
+        ...matchedTarget,
+        id: buildBulkSymbolId(matchedTarget),
+        importStatus: "noData",
+        source: "stooq",
+      });
+      return;
+    }
+
+    accumulator.histories.push({
+      bars,
+      currency: matchedTarget.currency,
+      instrumentType: resolveInstrumentTypeFromRule(rule, matchedTarget),
+      region: matchedTarget.region,
+      sourceSymbol: matchedTarget.sourceSymbol,
+      symbolId: buildBulkSymbolId(matchedTarget),
+    });
+    accumulator.symbolsBySourceSymbol.set(sourceSymbol, {
+      ...matchedTarget,
+      id: buildBulkSymbolId(matchedTarget),
+      importStatus: "imported",
+      source: "stooq",
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "Unknown bulk parsing error.";
+    accumulator.failures.push({
+      path: file.path,
+      reason,
+      sourceSymbol,
+    });
+    accumulator.symbolsBySourceSymbol.set(sourceSymbol, {
+      ...matchedTarget,
+      id: buildBulkSymbolId(matchedTarget),
+      importStatus: "failed",
+      lastImportError: reason,
+      source: "stooq",
+    });
+  }
+}
+
+export function finalizeStooqBulkNormalizationAccumulator(
+  accumulator: StooqBulkNormalizationAccumulator,
+): StooqBulkNormalizationResult {
   return {
-    failures,
-    histories: histories.sort((left, right) => left.sourceSymbol.localeCompare(right.sourceSymbol)),
-    symbols: [...symbolsBySourceSymbol.values()].sort((left, right) =>
+    failures: accumulator.failures,
+    histories: accumulator.histories.sort((left, right) =>
+      left.sourceSymbol.localeCompare(right.sourceSymbol),
+    ),
+    symbols: [...accumulator.symbolsBySourceSymbol.values()].sort((left, right) =>
       left.sourceSymbol.localeCompare(right.sourceSymbol),
     ),
   };

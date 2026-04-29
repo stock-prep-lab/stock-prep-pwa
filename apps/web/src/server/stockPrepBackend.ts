@@ -44,14 +44,17 @@ export type DatasetStateRow = {
 };
 
 export type ImportJobRow = {
+  attempt_count: number;
   daily_price_count: number;
   dataset_version: string | null;
   error_message: string | null;
   exchange_rate_count: number;
   file_name: string;
   finished_at: string | null;
+  heartbeat_at: string | null;
   id: string;
   manifest_key: string | null;
+  processing_started_at: string | null;
   raw_object_key: string | null;
   scope_id: ImportJobRecord["scopeId"];
   started_at: string;
@@ -104,6 +107,8 @@ type GlobalWithStockPrepServerState = typeof globalThis & {
 const defaultGeneratedAt = "2026-04-17T15:35:00+09:00";
 const defaultMarketDatasetVersion = "server-market-v1";
 const importUploadTokenTtlSeconds = 15 * 60;
+const importJobHeartbeatIntervalMs = 60 * 1000;
+const importJobStaleAfterMs = 10 * 60 * 1000;
 const latestDatasetStateId = "latest";
 const schemaGuidePath = "docs/setup/supabase-import-tables.sql";
 
@@ -652,39 +657,57 @@ export async function claimNextQueuedImportJob({
     const { data, error } = await supabase
       .from(supabaseTableNames.importJobs)
       .select("*")
-      .eq("status", "queued")
+      .in("status", ["queued", "processing"])
       .order("started_at", { ascending: true })
-      .limit(1);
+      .limit(20);
 
     if (error) {
       throw error;
     }
 
-    const row = ((data ?? []) as ImportJobRow[]).at(0);
+    const row = findClaimableImportJobRow((data ?? []) as ImportJobRow[]);
 
     if (!row) {
       return null;
     }
 
-    const { data: claimedRow, error: updateError } = await supabase
+    const claimedAt = new Date().toISOString();
+    const nextAttemptCount = (row.attempt_count ?? 0) + 1;
+    let updateQuery = supabase
       .from(supabaseTableNames.importJobs)
       .update({
+        attempt_count: nextAttemptCount,
+        error_message: null,
+        finished_at: null,
+        heartbeat_at: claimedAt,
+        processing_started_at: claimedAt,
         status: "processing",
       })
       .eq("id", row.id)
-      .eq("status", "queued")
+      .eq("status", row.status);
+
+    if (row.status === "queued") {
+      updateQuery = updateQuery.eq("attempt_count", row.attempt_count ?? 0);
+    } else {
+      updateQuery =
+        row.heartbeat_at === null
+          ? updateQuery.is("heartbeat_at", null)
+          : updateQuery.eq("heartbeat_at", row.heartbeat_at);
+    }
+
+    const claimResult = await updateQuery
       .select("*")
       .maybeSingle();
 
-    if (updateError) {
-      throw updateError;
+    if (claimResult.error) {
+      throw claimResult.error;
     }
 
-    if (!claimedRow) {
+    if (!claimResult.data) {
       continue;
     }
 
-    const mappedRow = claimedRow as ImportJobRow;
+    const mappedRow = claimResult.data as ImportJobRow;
 
     if (!mappedRow.raw_object_key) {
       throw new Error(`import job に raw_object_key がありません: ${mappedRow.id}`);
@@ -694,6 +717,26 @@ export async function claimNextQueuedImportJob({
       ...mapImportJobRow(mappedRow),
       rawObjectKey: mappedRow.raw_object_key,
     };
+  }
+}
+
+export async function touchImportJobHeartbeat({
+  jobId,
+  supabase,
+}: {
+  jobId: string;
+  supabase: SupabaseClient;
+}): Promise<void> {
+  const { error } = await supabase
+    .from(supabaseTableNames.importJobs)
+    .update({
+      heartbeat_at: new Date().toISOString(),
+    })
+    .eq("id", jobId)
+    .eq("status", "processing");
+
+  if (error) {
+    throw error;
   }
 }
 
@@ -801,7 +844,10 @@ async function upsertHoldingRow({
 function mapImportJobRecord(
   job: ImportJobRecord,
   { rawObjectKey }: { rawObjectKey?: string } = {},
-): ImportJobRow {
+): Omit<
+  ImportJobRow,
+  "attempt_count" | "heartbeat_at" | "processing_started_at"
+> {
   return {
     daily_price_count: job.dailyPriceCount,
     dataset_version: job.datasetVersion ?? null,
@@ -834,6 +880,45 @@ function mapImportJobRow(row: ImportJobRow): ImportJobRecord {
     status: row.status,
     symbolCount: row.symbol_count,
   };
+}
+
+export function findClaimableImportJobRow(
+  rows: readonly ImportJobRow[],
+  now = new Date(),
+): ImportJobRow | null {
+  for (const row of rows) {
+    if (row.status === "queued") {
+      return row;
+    }
+
+    if (isStaleImportJobRow(row, now)) {
+      return row;
+    }
+  }
+
+  return null;
+}
+
+export function isStaleImportJobRow(
+  row: Pick<ImportJobRow, "heartbeat_at" | "processing_started_at" | "started_at" | "status">,
+  now = new Date(),
+): boolean {
+  if (row.status !== "processing") {
+    return false;
+  }
+
+  const leaseTimestamp = row.heartbeat_at ?? row.processing_started_at ?? row.started_at;
+  const leaseTime = Date.parse(leaseTimestamp);
+
+  if (!Number.isFinite(leaseTime)) {
+    return false;
+  }
+
+  return leaseTime <= now.getTime() - importJobStaleAfterMs;
+}
+
+export function getImportJobHeartbeatIntervalMs(): number {
+  return importJobHeartbeatIntervalMs;
 }
 
 function mapHoldingRecord(holding: PortfolioHolding): HoldingRow {

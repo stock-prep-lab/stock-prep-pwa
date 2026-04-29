@@ -67,21 +67,48 @@ describe("stockPrepImportWorker", () => {
     expect(store.datasetStateStatuses).toEqual(["importing", "failed"]);
     expect(store.deletedRawZipKeys).toEqual([job.rawObjectKey]);
   });
+
+  it("touches heartbeat while a job is processing", async () => {
+    const job = createQueuedJob();
+    const store = createFakeWorkerStore({
+      currentMarketData: {
+        dailyPrices: [],
+        datasetVersion: "market-data-empty",
+        exchangeRates: [],
+        generatedAt: new Date(0).toISOString(),
+        symbols: [],
+      },
+      jobs: [job],
+      loadRawZipDelayMs: 20,
+      rawZipByKey: new Map([[job.rawObjectKey, await createZipBytes()]]),
+    });
+
+    await processClaimedImportJob({
+      heartbeatIntervalMs: 5,
+      job,
+      store,
+    });
+
+    expect(store.heartbeatTouches).toContain(job.id);
+  });
 });
 
 function createFakeWorkerStore({
   currentMarketData,
   jobs,
+  loadRawZipDelayMs,
   rawZipByKey,
 }: {
   currentMarketData: MarketDataPayload;
   jobs: Array<ImportJobRecord & { rawObjectKey: string }>;
+  loadRawZipDelayMs?: number;
   rawZipByKey: Map<string, Uint8Array>;
 }): StockPrepImportWorkerStore & {
   completedJobs: ImportJobRecord[];
   datasetStateStatuses: string[];
   deletedRawZipKeys: string[];
   failedJobs: ImportJobRecord[];
+  heartbeatTouches: string[];
   persistedArtifacts: Array<{
     generatedAt: string;
     marketData: MarketDataPayload;
@@ -92,6 +119,7 @@ function createFakeWorkerStore({
   const failedJobs: ImportJobRecord[] = [];
   const datasetStateStatuses: string[] = [];
   const deletedRawZipKeys: string[] = [];
+  const heartbeatTouches: string[] = [];
   const persistedArtifacts: Array<{
     generatedAt: string;
     marketData: MarketDataPayload;
@@ -109,6 +137,7 @@ function createFakeWorkerStore({
       rawZipByKey.delete(rawObjectKey);
     },
     failedJobs,
+    heartbeatTouches,
     async claimNextQueuedJob() {
       return queue.shift() ?? null;
     },
@@ -119,6 +148,10 @@ function createFakeWorkerStore({
       };
     },
     async loadRawZip(rawObjectKey) {
+      if (loadRawZipDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, loadRawZipDelayMs));
+      }
+
       const bytes = rawZipByKey.get(rawObjectKey);
 
       if (!bytes) {
@@ -146,6 +179,9 @@ function createFakeWorkerStore({
         marketData,
       });
       currentMarketData = marketData;
+    },
+    async touchJobHeartbeat(jobId) {
+      heartbeatTouches.push(jobId);
     },
   };
 }
