@@ -17,6 +17,7 @@ import {
   importBulkScopeFromZip,
   type StockPrepMarketDataManifest,
 } from "./stockPrepImport.js";
+import { loadPersistedMarketData, planPersistedMarketData } from "./stockPrepMarketDataStorage.js";
 import {
   createR2Client,
   deleteObject,
@@ -195,17 +196,23 @@ export async function processClaimedImportJob({
 export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerStore {
   const supabase = createSupabaseAdminClient();
   const r2 = createR2Client();
+  let currentArtifactKeys: string[] = [];
 
   return {
     async claimNextQueuedJob() {
       return claimNextQueuedImportJob({ supabase });
     },
     async deleteCurrentArtifacts() {
-      await Promise.all([
-        deleteObject({ key: currentManifestKey, r2 }).catch(() => undefined),
-        deleteObject({ key: currentMarketDataKey, r2 }).catch(() => undefined),
-        deleteObject({ key: currentLatestSummaryKey, r2 }).catch(() => undefined),
-      ]);
+      const keys = [
+        currentManifestKey,
+        currentLatestSummaryKey,
+        ...currentArtifactKeys,
+      ];
+      currentArtifactKeys = [];
+
+      await Promise.all(
+        [...new Set(keys)].map((key) => deleteObject({ key, r2 }).catch(() => undefined)),
+      );
     },
     async deleteRawZip(rawObjectKey) {
       await deleteObject({
@@ -228,16 +235,18 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
           key: latestState.latest_manifest_key,
           r2,
         });
-        const marketData = await getJsonObject<MarketDataPayload>({
+        const persisted = await loadPersistedMarketData({
           key: manifest.marketDataKey,
-          r2,
+          readJson: (key) => getJsonObject({ key, r2 }),
         });
+        currentArtifactKeys = persisted.artifactKeys;
 
         return {
           manifest,
-          marketData,
+          marketData: persisted.marketData,
         };
       } catch {
+        currentArtifactKeys = [];
         return {
           manifest: null,
           marketData: createEmptyMarketDataPayload(),
@@ -275,11 +284,19 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
       });
     },
     async persistCurrentArtifacts({ generatedAt, manifest, marketData }) {
-      await putJsonObject({
-        body: marketData,
-        key: currentMarketDataKey,
-        r2,
+      const persisted = planPersistedMarketData({
+        baseKey: currentMarketDataKey,
+        marketData,
       });
+
+      for (const object of persisted.objects) {
+        await putJsonObject({
+          body: object.body,
+          key: object.key,
+          r2,
+        });
+      }
+
       await putJsonObject({
         body: buildLatestSummaryPayload(marketData),
         key: currentLatestSummaryKey,
@@ -298,6 +315,7 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
         supabase,
         version: marketData.datasetVersion,
       });
+      currentArtifactKeys = persisted.artifactKeys;
     },
     async touchJobHeartbeat(jobId) {
       await touchImportJobHeartbeat({

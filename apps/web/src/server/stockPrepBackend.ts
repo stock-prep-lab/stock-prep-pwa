@@ -17,6 +17,7 @@ import type {
 
 import { dummyStockPrepSnapshot } from "../data/seedSnapshot.js";
 import type { StockPrepMarketDataManifest } from "./stockPrepImport.js";
+import { loadPersistedMarketData } from "./stockPrepMarketDataStorage.js";
 import {
   assertObjectExists,
   createPresignedUploadUrl,
@@ -402,12 +403,12 @@ function createRemoteBackend(): StockPrepServerBackend {
           key: latestState.latest_manifest_key,
           r2,
         });
-        const marketData = await getJsonObject<MarketDataPayload>({
+        const persisted = await loadPersistedMarketData({
           key: manifest.marketDataKey,
-          r2,
+          readJson: (key) => getJsonObject({ key, r2 }),
         });
 
-        return marketData;
+        return persisted.marketData;
       } catch (error) {
         console.error(
           "Falling back to dummy market data because remote market data load failed.",
