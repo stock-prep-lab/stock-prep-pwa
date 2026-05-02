@@ -164,7 +164,7 @@ function createFakeWorkerStore({
     completedJobs,
     datasetStateStatuses,
     deletedRawZipKeys,
-    async deleteCurrentArtifacts(_scopeId: ImportJobRecord["scopeId"]) {
+    async deleteCurrentArtifacts() {
       return;
     },
     async deleteRawZip(rawObjectKey) {
