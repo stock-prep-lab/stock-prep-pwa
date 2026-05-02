@@ -91,6 +91,41 @@ describe("stockPrepImportWorker", () => {
 
     expect(store.heartbeatTouches).toContain(job.id);
   });
+
+  it("emits progress logs while processing a job", async () => {
+    const job = createQueuedJob();
+    const store = createFakeWorkerStore({
+      currentMarketData: {
+        dailyPrices: [],
+        datasetVersion: "market-data-empty",
+        exchangeRates: [],
+        generatedAt: new Date(0).toISOString(),
+        symbols: [],
+      },
+      jobs: [job],
+      rawZipByKey: new Map([[job.rawObjectKey, await createZipBytes()]]),
+    });
+    const messages: string[] = [];
+
+    await processClaimedImportJob({
+      job,
+      logger: {
+        error(message) {
+          messages.push(`error:${message}`);
+        },
+        info(message) {
+          messages.push(`info:${message}`);
+        },
+      },
+      store,
+    });
+
+    expect(messages.some((message) => message.includes("current artifact と raw ZIP を読み込みます"))).toBe(true);
+    expect(messages.some((message) => message.includes("ZIP を正規化します"))).toBe(true);
+    expect(messages.some((message) => message.includes("既存 artifact を cleanup します"))).toBe(true);
+    expect(messages.some((message) => message.includes("新しい artifact を保存します"))).toBe(true);
+    expect(messages.some((message) => message.includes("完了しました"))).toBe(true);
+  });
 });
 
 function createFakeWorkerStore({
@@ -129,7 +164,7 @@ function createFakeWorkerStore({
     completedJobs,
     datasetStateStatuses,
     deletedRawZipKeys,
-    async deleteCurrentArtifacts() {
+    async deleteCurrentArtifacts(_scopeId: ImportJobRecord["scopeId"]) {
       return;
     },
     async deleteRawZip(rawObjectKey) {

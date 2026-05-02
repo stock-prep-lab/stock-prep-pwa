@@ -32,6 +32,11 @@ const currentMarketDataKey = "current/market-data.json";
 const currentLatestSummaryKey = "current/latest-summary.json";
 const artifactDeleteConcurrency = 4;
 
+type StockPrepImportWorkerLogger = {
+  error(message: string, error?: unknown): void;
+  info(message: string): void;
+};
+
 type PersistedCurrentArtifacts = {
   manifest: StockPrepMarketDataManifest | null;
   marketData: MarketDataPayload;
@@ -39,7 +44,7 @@ type PersistedCurrentArtifacts = {
 
 export type StockPrepImportWorkerStore = {
   claimNextQueuedJob(): Promise<QueuedImportJob | null>;
-  deleteCurrentArtifacts(): Promise<void>;
+  deleteCurrentArtifacts(scopeId: QueuedImportJob["scopeId"]): Promise<void>;
   deleteRawZip(rawObjectKey: string): Promise<void>;
   loadCurrentArtifacts(): Promise<PersistedCurrentArtifacts>;
   loadRawZip(rawObjectKey: string): Promise<Uint8Array>;
@@ -62,9 +67,11 @@ export type StockPrepImportWorkerRunResult = {
 };
 
 export async function runStockPrepImportWorker({
+  logger = createDefaultWorkerLogger(),
   maxJobs = Number.POSITIVE_INFINITY,
   store = createRemoteStockPrepImportWorkerStore(),
 }: {
+  logger?: StockPrepImportWorkerLogger;
   maxJobs?: number;
   store?: StockPrepImportWorkerStore;
 } = {}): Promise<StockPrepImportWorkerRunResult> {
@@ -73,16 +80,22 @@ export async function runStockPrepImportWorker({
   let processedJobs = 0;
 
   while (processedJobs < maxJobs) {
+    logger.info("import worker: queue から次の job を取得します");
     const claimedJob = await store.claimNextQueuedJob();
 
     if (!claimedJob) {
+      logger.info("import worker: 処理対象の job はありません");
       break;
     }
 
     processedJobs += 1;
+    logger.info(
+      `import worker: job を取得しました id=${claimedJob.id} scope=${claimedJob.scopeId} file=${claimedJob.fileName}`,
+    );
 
     const finishedJob = await processClaimedImportJob({
       job: claimedJob,
+      logger,
       store,
     });
 
@@ -103,14 +116,17 @@ export async function runStockPrepImportWorker({
 export async function processClaimedImportJob({
   heartbeatIntervalMs = getImportJobHeartbeatIntervalMs(),
   job,
+  logger = createDefaultWorkerLogger(),
   now = () => new Date().toISOString(),
   store,
 }: {
   heartbeatIntervalMs?: number;
   job: QueuedImportJob;
+  logger?: StockPrepImportWorkerLogger;
   now?: () => string;
   store: StockPrepImportWorkerStore;
 }): Promise<ImportJobRecord> {
+  let stage = "dataset_state:importing";
   await store.markDatasetStateImporting().catch(() => undefined);
   const heartbeatHandle = setInterval(() => {
     void store.touchJobHeartbeat(job.id).catch(() => undefined);
@@ -118,11 +134,18 @@ export async function processClaimedImportJob({
   heartbeatHandle.unref?.();
 
   try {
+    stage = "load:current-artifacts-and-zip";
+    logger.info(`import worker: job=${job.id} scope=${job.scopeId} current artifact と raw ZIP を読み込みます`);
     const [currentArtifacts, zipBytes] = await Promise.all([
       store.loadCurrentArtifacts(),
       store.loadRawZip(job.rawObjectKey),
     ]);
+    logger.info(
+      `import worker: job=${job.id} scope=${job.scopeId} raw ZIP を読み込みました bytes=${zipBytes.byteLength}`,
+    );
     const generatedAt = now();
+    stage = "normalize:zip";
+    logger.info(`import worker: job=${job.id} scope=${job.scopeId} ZIP を正規化します`);
     const importResult = await importBulkScopeFromZip({
       currentMarketData: currentArtifacts.marketData,
       generatedAt,
@@ -130,6 +153,9 @@ export async function processClaimedImportJob({
       scopeId: job.scopeId,
       zipBytes,
     });
+    logger.info(
+      `import worker: job=${job.id} scope=${job.scopeId} 正規化完了 symbols=${importResult.summary.symbolCount} dailyPrices=${importResult.summary.dailyPriceCount} exchangeRates=${importResult.summary.exchangeRateCount}`,
+    );
     const manifest: StockPrepMarketDataManifest = {
       datasetVersion: importResult.marketData.datasetVersion,
       generatedAt,
@@ -142,7 +168,11 @@ export async function processClaimedImportJob({
       },
     };
 
-    await store.deleteCurrentArtifacts();
+    stage = "cleanup:scope-artifacts";
+    logger.info(`import worker: job=${job.id} scope=${job.scopeId} 既存 artifact を cleanup します`);
+    await store.deleteCurrentArtifacts(job.scopeId);
+    stage = "persist:scope-artifacts";
+    logger.info(`import worker: job=${job.id} scope=${job.scopeId} 新しい artifact を保存します`);
     await store.persistCurrentArtifacts({
       generatedAt,
       manifest,
@@ -164,12 +194,19 @@ export async function processClaimedImportJob({
       symbolCount: importResult.summary.symbolCount,
     };
 
+    stage = "complete:update-job";
     await store.markJobCompleted(completedJob);
+    stage = "cleanup:raw-zip";
     await store.deleteRawZip(job.rawObjectKey).catch(() => undefined);
+    logger.info(`import worker: job=${job.id} scope=${job.scopeId} 完了しました`);
 
     return completedJob;
   } catch (error) {
     const failedAt = now();
+    logger.error(
+      `import worker: job=${job.id} scope=${job.scopeId} 失敗しました stage=${stage}`,
+      error,
+    );
     const failedJob: ImportJobRecord = {
       dailyPriceCount: 0,
       datasetVersion: undefined,
@@ -199,18 +236,19 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
   const supabase = createSupabaseAdminClient();
   const r2 = createR2Client();
   let currentArtifactKeys: string[] = [];
+  let currentArtifactKeysByScope: Partial<Record<QueuedImportJob["scopeId"], string[]>> = {};
 
   return {
     async claimNextQueuedJob() {
       return claimNextQueuedImportJob({ supabase });
     },
-    async deleteCurrentArtifacts() {
-      const keys = [
-        currentManifestKey,
-        currentLatestSummaryKey,
-        ...currentArtifactKeys,
-      ];
-      currentArtifactKeys = [];
+    async deleteCurrentArtifacts(scopeId) {
+      const scopeKeys = currentArtifactKeysByScope[scopeId];
+      const keys = scopeKeys && scopeKeys.length > 0 ? scopeKeys : currentArtifactKeys;
+      currentArtifactKeysByScope = {
+        ...currentArtifactKeysByScope,
+        [scopeId]: [],
+      };
 
       await forEachWithConcurrency({
         concurrency: artifactDeleteConcurrency,
@@ -246,6 +284,7 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
           readJson: (key) => getJsonObject({ key, r2 }),
         });
         currentArtifactKeys = persisted.artifactKeys;
+        currentArtifactKeysByScope = persisted.artifactKeysByScope;
 
         return {
           manifest,
@@ -253,6 +292,7 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
         };
       } catch {
         currentArtifactKeys = [];
+        currentArtifactKeysByScope = {};
         return {
           manifest: null,
           marketData: createEmptyMarketDataPayload(),
@@ -322,12 +362,29 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
         version: marketData.datasetVersion,
       });
       currentArtifactKeys = persisted.artifactKeys;
+      currentArtifactKeysByScope = persisted.artifactKeysByScope;
     },
     async touchJobHeartbeat(jobId) {
       await touchImportJobHeartbeat({
         jobId,
         supabase,
       });
+    },
+  };
+}
+
+function createDefaultWorkerLogger(): StockPrepImportWorkerLogger {
+  return {
+    error(message, error) {
+      if (error === undefined) {
+        console.error(message);
+        return;
+      }
+
+      console.error(message, error);
+    },
+    info(message) {
+      console.log(message);
     },
   };
 }
