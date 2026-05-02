@@ -10,7 +10,6 @@
 
 非対象:
 
-- direct-to-R2 upload の本実装
 - Mac `launchd` worker の本実装
 - Cloud Run / GitHub Actions など別 runner への移植
 
@@ -77,12 +76,29 @@ Vercel Project の Environment Variables に、少なくとも以下を設定す
 4. Vercel Functions が raw ZIP の保存先払い出しと `import_jobs` 作成を行う
 5. Mac `launchd` worker が `queued` job を拾って処理する
 
+## R2 直接アップロード用の CORS
+
+管理画面からブラウザが Cloudflare R2 へ直接 `PUT` するため、bucket 側で CORS を許可する。
+
+最低限の考え方:
+
+- Origin:
+  - 本番の Vercel URL
+  - 必要ならローカル開発 URL (`http://localhost:5173` など)
+- Methods:
+  - `PUT`
+  - `HEAD`
+- Allowed Headers:
+  - `Content-Type`
+
+R2 側で CORS が不足していると、presigned URL が発行されていてもブラウザ upload が失敗する。
+
 ## Vercel 側で担う責務
 
 - 管理画面の配信
 - `api/` 配下の Vercel Functions 実行
-- raw ZIP の保存先払い出し
-- `import_jobs` 作成
+- raw ZIP の presigned upload URL 発行
+- upload 完了後の `import_jobs` 作成
 - dataset version / market data / holdings など軽い API の返却
 
 ## Vercel 側で担わない責務
@@ -96,5 +112,6 @@ Vercel Project の Environment Variables に、少なくとも以下を設定す
 - アプリ URL で画面が開く
 - `/admin/imports` に到達できる
 - `/api/admin/import-jobs` が同じ origin で応答する
+- `/api/admin/import-jobs` から direct-to-R2 用 URL を払い出せる
 - 環境変数未設定時は remote backend ではなく fallback に寄ることが分かる
 - 環境変数設定後は Supabase / R2 接続を前提に動かせる

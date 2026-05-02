@@ -5,12 +5,14 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
+    "prebuild": "pnpm --filter @stock-prep/shared build",
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "pnpm --filter @stock-prep/shared build",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

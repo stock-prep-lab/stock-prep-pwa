@@ -1,9 +1,19 @@
 import {
   DeleteObjectCommand,
+  type DeleteObjectCommandOutput,
   GetObjectCommand,
+  type GetObjectCommandOutput,
+  HeadObjectCommand,
+  type HeadObjectCommandOutput,
   PutObjectCommand,
+  type PutObjectCommandOutput,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+type R2SendCapableClient = {
+  send(command: unknown): Promise<unknown>;
+};
 
 export function createR2Client(): S3Client {
   const accountId = process.env.STOCK_PREP_R2_ACCOUNT_ID;
@@ -35,7 +45,8 @@ export async function putJsonObject({
 }): Promise<void> {
   const bucket = getBucketName();
 
-  await r2.send(
+  await sendR2Command<PutObjectCommandOutput>(
+    r2,
     new PutObjectCommand({
       Body: JSON.stringify(body),
       Bucket: bucket,
@@ -58,7 +69,8 @@ export async function putBinaryObject({
 }): Promise<void> {
   const bucket = getBucketName();
 
-  await r2.send(
+  await sendR2Command<PutObjectCommandOutput>(
+    r2,
     new PutObjectCommand({
       Body: body,
       Bucket: bucket,
@@ -68,17 +80,38 @@ export async function putBinaryObject({
   );
 }
 
-export async function getJsonObject<T>({
+export async function createPresignedUploadUrl({
+  contentType,
+  expiresInSeconds = 900,
   key,
   r2,
 }: {
+  contentType: string;
+  expiresInSeconds?: number;
   key: string;
   r2: S3Client;
-}): Promise<T> {
+}): Promise<string> {
+  const bucket = getBucketName();
+
+  return getSignedUrl(
+    r2,
+    new PutObjectCommand({
+      Bucket: bucket,
+      ContentType: contentType,
+      Key: key,
+    }),
+    {
+      expiresIn: expiresInSeconds,
+    },
+  );
+}
+
+export async function getJsonObject<T>({ key, r2 }: { key: string; r2: S3Client }): Promise<T> {
   const bucket = getBucketName();
 
   try {
-    const response = await r2.send(
+    const response = await sendR2Command<GetObjectCommandOutput>(
+      r2,
       new GetObjectCommand({
         Bucket: bucket,
         Key: key,
@@ -117,7 +150,8 @@ export async function getBinaryObject({
   const bucket = getBucketName();
 
   try {
-    const response = await r2.send(
+    const response = await sendR2Command<GetObjectCommandOutput>(
+      r2,
       new GetObjectCommand({
         Bucket: bucket,
         Key: key,
@@ -145,7 +179,7 @@ export async function getBinaryObject({
   }
 }
 
-export async function deleteObject({
+export async function assertObjectExists({
   key,
   r2,
 }: {
@@ -154,12 +188,43 @@ export async function deleteObject({
 }): Promise<void> {
   const bucket = getBucketName();
 
-  await r2.send(
+  try {
+    await sendR2Command<HeadObjectCommandOutput>(
+      r2,
+      new HeadObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+    );
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      ("name" in error || "$metadata" in error) &&
+      ((error as { name?: string }).name === "NoSuchKey" ||
+        (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404)
+    ) {
+      throw new Error(`R2 object was not found: ${key}`);
+    }
+
+    throw error;
+  }
+}
+
+export async function deleteObject({ key, r2 }: { key: string; r2: S3Client }): Promise<void> {
+  const bucket = getBucketName();
+
+  await sendR2Command<DeleteObjectCommandOutput>(
+    r2,
     new DeleteObjectCommand({
       Bucket: bucket,
       Key: key,
     }),
   );
+}
+
+async function sendR2Command<T>(r2: S3Client, command: unknown): Promise<T> {
+  return (await (r2 as S3Client & R2SendCapableClient).send(command)) as T;
 }
 
 function getBucketName(): string {

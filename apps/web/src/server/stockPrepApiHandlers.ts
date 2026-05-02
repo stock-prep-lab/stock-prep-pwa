@@ -1,8 +1,11 @@
 import type {
+  CreateImportUploadSessionRequest,
   DatasetVersionPayload,
+  FinalizeImportUploadRequest,
   HoldingsPayload,
   ImportJobRecord,
   ImportJobsPayload,
+  ImportUploadSessionPayload,
   MarketDataPayload,
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
@@ -33,6 +36,18 @@ export async function handleUpsertHoldingRequest(
 
 export async function handleListImportJobsRequest(): Promise<ImportJobsPayload> {
   return getStockPrepServerBackend().getImportJobsPayload();
+}
+
+export async function handleCreateImportUploadSessionRequest(
+  request: CreateImportUploadSessionRequest,
+): Promise<ImportUploadSessionPayload> {
+  return getStockPrepServerBackend().createImportUploadSession(request);
+}
+
+export async function handleFinalizeImportUploadRequest(
+  request: FinalizeImportUploadRequest,
+): Promise<ImportJobRecord> {
+  return getStockPrepServerBackend().finalizeImportUpload(request);
 }
 
 export async function handleImportMarketZipRequest({

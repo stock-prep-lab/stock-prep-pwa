@@ -11,7 +11,9 @@ import type {
 } from "@stock-prep/shared";
 
 import {
-  normalizeStooqBulkData,
+  appendStooqBulkFileToAccumulator,
+  createStooqBulkNormalizationAccumulator,
+  finalizeStooqBulkNormalizationAccumulator,
   resolveBulkCategoryRule,
   resolveSourceSymbolFromPath,
   type StooqBulkFile,
@@ -185,10 +187,13 @@ export async function importBulkScopeFromZip({
   scopeId: ImportScopeId;
   zipBytes: Uint8Array;
 }): Promise<ScopeImportResult> {
-  const files = await extractStooqBulkFilesFromZip(zipBytes);
+  const zip = await JSZip.loadAsync(zipBytes);
+  const txtEntries = Object.values(zip.files)
+    .filter((entry) => !entry.dir && entry.name.toLowerCase().endsWith(".txt"))
+    .sort((left, right) => left.name.localeCompare(right.name));
 
   if (scopeId === "FX") {
-    const exchangeRates = parseWorldCurrencyFiles(files);
+    const exchangeRates = await parseWorldCurrencyEntries(txtEntries);
 
     if (exchangeRates.length === 0) {
       throw new Error("world ZIP から対象為替ペアを見つけられませんでした。");
@@ -210,7 +215,7 @@ export async function importBulkScopeFromZip({
         dailyPriceCount: 0,
         exchangeRateCount: exchangeRates.length,
         failureCount: 0,
-        fileCount: files.length,
+        fileCount: txtEntries.length,
         generatedAt,
         scopeId,
         symbolCount: 0,
@@ -219,11 +224,25 @@ export async function importBulkScopeFromZip({
     };
   }
 
-  const inferredTargets = inferTargetsFromBulkFiles(files, scopeId);
-  const normalized = normalizeStooqBulkData({
-    files,
+  const inferredTargets = inferTargetsFromBulkPaths(
+    txtEntries.map((entry) => entry.name),
+    scopeId,
+  );
+  const accumulator = createStooqBulkNormalizationAccumulator({
     targets: inferredTargets.targets,
   });
+
+  for (const entry of txtEntries) {
+    appendStooqBulkFileToAccumulator({
+      accumulator,
+      file: {
+        content: await entry.async("string"),
+        path: entry.name,
+      },
+    });
+  }
+
+  const normalized = finalizeStooqBulkNormalizationAccumulator(accumulator);
 
   if (inferredTargets.targets.length === 0) {
     throw new Error(`${scopeId} ZIP から対象カテゴリの .txt を見つけられませんでした。`);
@@ -254,7 +273,7 @@ export async function importBulkScopeFromZip({
       dailyPriceCount: normalized.histories.reduce((total, history) => total + history.bars.length, 0),
       exchangeRateCount: 0,
       failureCount: normalized.failures.length,
-      fileCount: files.length,
+      fileCount: txtEntries.length,
       generatedAt,
       scopeId,
       symbolCount: importedSymbols.length,
@@ -263,8 +282,8 @@ export async function importBulkScopeFromZip({
   };
 }
 
-function inferTargetsFromBulkFiles(
-  files: readonly StooqBulkFile[],
+function inferTargetsFromBulkPaths(
+  paths: readonly string[],
   scopeId: SupportedRegion,
 ): {
   categoryBySourceSymbol: Map<string, string>;
@@ -273,16 +292,20 @@ function inferTargetsFromBulkFiles(
   const categoryBySourceSymbol = new Map<string, string>();
   const targetsBySourceSymbol = new Map<string, StooqBulkImportTarget>();
 
-  for (const file of files) {
-    const rule = resolveBulkCategoryRule(file.path);
+  for (const path of paths) {
+    const rule = resolveBulkCategoryRule(path);
 
     if (!rule || rule.kind === "unsupported" || rule.region !== scopeRegionMap[scopeId]) {
       continue;
     }
 
-    const sourceSymbol = resolveSourceSymbolFromPath(file.path).toLowerCase();
+    const sourceSymbol = resolveSourceSymbolFromPath(path).toLowerCase();
     const [rawCode = sourceSymbol] = sourceSymbol.split(".");
     const securityType = normalizeSecurityType(rule.instrumentType);
+
+    if (categoryBySourceSymbol.has(sourceSymbol)) {
+      continue;
+    }
 
     categoryBySourceSymbol.set(sourceSymbol, rule.pathFragment);
     targetsBySourceSymbol.set(sourceSymbol, {
@@ -401,18 +424,22 @@ function mergeMarketDataScope({
   };
 }
 
-function parseWorldCurrencyFiles(files: readonly StooqBulkFile[]): ExchangeRateBar[] {
+async function parseWorldCurrencyEntries(
+  entries: readonly { name: string; async(type: "string"): Promise<string> }[],
+): Promise<ExchangeRateBar[]> {
   const barsById = new Map<string, ExchangeRateBar>();
 
-  for (const file of files) {
-    const sourceSymbol = resolveSourceSymbolFromPath(file.path).toLowerCase();
+  for (const entry of entries) {
+    const sourceSymbol = resolveSourceSymbolFromPath(entry.name).toLowerCase();
     const mapping = fxSourceMap[sourceSymbol as keyof typeof fxSourceMap];
 
-    if (!file.path.toLowerCase().includes("/currencies/") || !mapping) {
+    if (!entry.name.toLowerCase().includes("/currencies/") || !mapping) {
       continue;
     }
 
-    for (const line of file.content.split(/\r?\n/).map((row) => row.trim()).filter(Boolean)) {
+    const content = await entry.async("string");
+
+    for (const line of content.split(/\r?\n/).map((row) => row.trim()).filter(Boolean)) {
       if (line.startsWith("<TICKER>")) {
         continue;
       }

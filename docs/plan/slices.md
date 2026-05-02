@@ -11,7 +11,7 @@
 - E2E 対象 Slice では、主要導線の E2E テストを追加または更新する
 - E2E は画面骨組みが固まる前には無理に追加せず、実データや主要導線が成立した段階で導入する
 - レスポンシブ対応だけでは PWA 対応とみなさない
-- PWA としての Manifest / Service Worker / installable 対応は、主要画面の本物データ化後の Slice 22 で扱う
+- PWA としての Manifest / Service Worker / installable 対応は、主要画面の本物データ化後の Slice 24 で扱う
 - 外部日足データは Stooq daily ASCII bulk を使い、管理者が手動取得した ZIP を取り込む前提で扱う
 - 日本株に加えて、米国株、英国株、香港株の日足も同じ取り込み設計に含める
 - 株式と ETF を MVP の投資対象に含め、REIT は将来拡張まで保留する
@@ -687,6 +687,47 @@
 
 ---
 
+## Slice 17.8: scope 分離された履歴 artifact と worker 進捗ログ整備
+
+### 対象
+- Cloudflare R2 の current artifact を `jp` / `us` / `uk` / `hk` / `fx` の scope 単位で分離する保存設計への見直し
+- scope ごとの `manifest` / `latest summary` / full historical artifact 更新
+- full historical は symbol ごとの object 保存には寄せず、scope ごとの chunk 保存を維持する方針整理
+- 再取り込み時に対象 scope だけ cleanup / 再保存できる導線の整備
+- Slice 19 の銘柄詳細で scope 全体総なめを避けやすくするため、scope ごとの履歴参照導線を追加
+- 各 scope に `symbolId` と履歴 chunk の対応付けを持つ対応表 JSON を追加
+- `pnpm import:worker` の標準出力で、claim / ZIP 読み込み / 正規化 / 保存 / cleanup / 完了 / 失敗が分かる進捗ログの追加
+- 長い取り込み処理中に、現在どの scope / どの段階を処理しているか分かるログ粒度の整理
+
+### 非対象
+- 銘柄詳細 UI 本実装
+- lightweight-charts の導入
+- full historical の symbol ごと object 保存への変更
+- Push 通知
+- Mac `launchd` worker の本番運用強化
+- Cloud Run / GitHub Actions など別 runner への移植
+
+### 完了条件
+- R2 の current artifact が scope 単位で分離され、JP 再取り込み時に US / UK / HK / FX を巻き込まずに更新できる
+- 再取り込み時の cleanup が対象 scope に閉じている
+- full historical は scope ごとの chunk 保存を維持しつつ、各 scope の対応表 JSON から必要な chunk へ到達できる
+- full historical の参照経路が、後続 Slice 19 で scope 内全 chunk 総なめ前提にならない形に整理されている
+- 途中失敗時に、影響範囲が対象 scope に閉じることを確認できる
+- `pnpm import:worker` 実行中に、どの job / scope / 段階を処理しているか標準出力から追える
+- 失敗時ログから、少なくとも失敗 scope・失敗段階・例外理由が分かる
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
+- scope ごとの cleanup / 再保存ロジックにユニットテストを追加
+- 実 ZIP を使って、ある scope の再取り込みが他 scope を壊さないことを確認
+- `pnpm import:worker` 実行時の進捗ログを確認し、開始から完了または失敗まで追えることを PR に記載
+- docs-only の変更が中心の場合は文書レビュー観点を PR に記載
+
+---
+
 ## Slice 18: 銘柄マスタ / 検索の本物データ化
 
 ### 対象
@@ -815,7 +856,87 @@
 
 ---
 
-## Slice 22: PWA 最小基盤
+## Slice 22: import worker 運用強化 / launchd・sleep・ログ整備
+
+### 対象
+- Mac `launchd` worker の本運用前提整理
+- sleep 影響を踏まえた worker 実行方針の整理
+- `caffeinate` 利用前提の手順整理
+- `launchd` plist / 起動方法 / ログ出力先の見直し
+- import worker のログ粒度改善
+- `import_jobs` の `queued` / `processing` / `completed` / `failed` / stale `processing` の追跡性改善
+- raw ZIP / current データ / cleanup の運用確認手順整理
+- worker 手動実行時と定期実行時の確認手順整理
+- 失敗時の一次切り分け手順の文書化
+
+### 非対象
+- Push 通知
+- 外部通知サービス連携
+- Cloud Run / GitHub Actions など別 runner への移植
+- 検索 / 銘柄詳細 / ホーム / スクリーニング画面の追加改修
+- import 処理ロジック自体の大きな再設計
+
+### 完了条件
+- Mac `launchd` worker の本番運用手順が文書で整理されている
+- sleep 中は import 実行を保証しないこと、必要に応じて `caffeinate` を使うことが明記されている
+- `launchd` 実行時の標準出力 / 標準エラー / 失敗時確認箇所が明確になっている
+- `processing` が stale になった場合の挙動と確認方法が明記されている
+- `failed` job を手動で再試行する手順が整理されている
+- import worker の主要ログから、開始・対象 scope・R2 読み書き・完了・失敗理由が追える
+- モバイル幅 / デスクトップ幅での画面改修がある場合、その確認結果を PR に記載する
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
+- Mac 上で worker の手動実行確認
+- `launchd` 経由の定期実行確認
+- stale `processing` を次回実行で再取得できることを確認
+- 失敗 job のログ確認手順を PR に記載
+- docs-only の変更が中心の場合は文書レビュー観点を PR に記載
+
+---
+
+## Slice 23: import / worker 通知と運用可視化
+
+### 対象
+- import 完了 / 失敗 / 再試行に関する通知方針整理
+- 通知対象イベントの定義
+- `failed` job、stale recovery、queue 滞留の可視化方針整理
+- 管理画面または運用確認導線での import 状態の見やすさ改善
+- 通知メッセージに含める scope、失敗理由、再試行状況の整理
+- 通知を前提とした `import_jobs` / `dataset_state` の参照整理
+- 手動対応が必要な失敗と、自動回復対象の失敗の区別整理
+
+### 非対象
+- Push 通知のアプリ内 UX 全面改修
+- 銘柄検索 / 銘柄詳細 / ホーム / スクリーニングの新機能追加
+- import worker の別 runtime への移植
+- 高度な監視基盤や外部 observability 製品の導入
+
+### 完了条件
+- import の成功 / 失敗 / 再試行 / queue 滞留のうち、通知すべきイベントが定義されている
+- 失敗時に「自然回復待ちでよいもの」と「人が見るべきもの」が区別できる
+- 通知または可視化から、対象 scope、発生時刻、失敗理由、attempt 状況が追える
+- `failed` job や queue 滞留を見落としにくい導線がある
+- 運用者が通知を見て次の行動を判断できる
+- モバイル幅 / デスクトップ幅で画面変更がある場合、主要情報が欠けず確認できる
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
+- 成功時通知または成功表示の確認
+- 失敗時通知または失敗表示の確認
+- stale recovery 発生時の表示 / 通知確認
+- queue 滞留時の確認観点を PR に記載
+- docs-only の変更が中心の場合は文書レビュー観点を PR に記載
+
+---
+
+## Slice 24: PWA 最小基盤
 
 ### 対象
 - Web App Manifest
@@ -850,7 +971,7 @@
 
 ---
 
-## Slice 23: Push 購読
+## Slice 25: Push 購読
 
 ### 対象
 - 通知許可導線
@@ -872,7 +993,7 @@
 
 ---
 
-## Slice 24: 通知送信
+## Slice 26: 通知送信
 
 ### 対象
 - 日次更新通知
@@ -893,7 +1014,7 @@
 
 ---
 
-## Slice 25: 仕上げと QA
+## Slice 27: 仕上げと QA
 
 ### 対象
 - UI 微調整
@@ -923,7 +1044,7 @@
 
 ---
 
-## Slice 26: ローカル開発環境の Docker 分離
+## Slice 28: ローカル開発環境の Docker 分離
 
 ### 対象
 - Docker Compose によるローカル開発環境の追加
@@ -941,7 +1062,7 @@
 
 ---
 
-## Slice 27: runtime 境界整理と構成リファクタ
+## Slice 29: runtime 境界整理と構成リファクタ
 
 ### 対象
 - 機能変更なしの構成リファクタ

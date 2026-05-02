@@ -1,4 +1,4 @@
-import type { HoldingsPayload, MarketDataPayload } from "./portfolio";
+import type { HoldingsPayload, MarketDataPayload } from "./portfolio.js";
 
 export type SyncStateId = "holdings" | "market-data";
 

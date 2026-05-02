@@ -18,7 +18,7 @@
 
 - repository root で `pnpm install` 済み
 - Supabase / R2 の環境変数をローカルでも解決できる
-- 管理画面から raw ZIP が R2 へ保存され、`import_jobs` が `queued` で作成されている
+- 管理画面から raw ZIP が R2 へ直接アップロードされ、`import_jobs` が `queued` で作成されている
 
 必要な環境変数:
 

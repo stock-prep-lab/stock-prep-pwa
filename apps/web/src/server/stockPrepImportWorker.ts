@@ -3,8 +3,10 @@ import type { ImportJobRecord, MarketDataPayload } from "@stock-prep/shared";
 import {
   claimNextQueuedImportJob,
   createSupabaseAdminClient,
+  getImportJobHeartbeatIntervalMs,
   loadLatestDatasetState,
   persistDatasetState,
+  touchImportJobHeartbeat,
   updateDatasetStateStatus,
   updateImportJob,
   type QueuedImportJob,
@@ -15,6 +17,8 @@ import {
   importBulkScopeFromZip,
   type StockPrepMarketDataManifest,
 } from "./stockPrepImport.js";
+import { forEachWithConcurrency } from "./asyncConcurrency.js";
+import { loadPersistedMarketData, planPersistedMarketData } from "./stockPrepMarketDataStorage.js";
 import {
   createR2Client,
   deleteObject,
@@ -26,6 +30,7 @@ import {
 const currentManifestKey = "current/manifest.json";
 const currentMarketDataKey = "current/market-data.json";
 const currentLatestSummaryKey = "current/latest-summary.json";
+const artifactDeleteConcurrency = 4;
 
 type PersistedCurrentArtifacts = {
   manifest: StockPrepMarketDataManifest | null;
@@ -47,6 +52,7 @@ export type StockPrepImportWorkerStore = {
     manifest: StockPrepMarketDataManifest;
     marketData: MarketDataPayload;
   }): Promise<void>;
+  touchJobHeartbeat(jobId: string): Promise<void>;
 };
 
 export type StockPrepImportWorkerRunResult = {
@@ -95,15 +101,21 @@ export async function runStockPrepImportWorker({
 }
 
 export async function processClaimedImportJob({
+  heartbeatIntervalMs = getImportJobHeartbeatIntervalMs(),
   job,
   now = () => new Date().toISOString(),
   store,
 }: {
+  heartbeatIntervalMs?: number;
   job: QueuedImportJob;
   now?: () => string;
   store: StockPrepImportWorkerStore;
 }): Promise<ImportJobRecord> {
   await store.markDatasetStateImporting().catch(() => undefined);
+  const heartbeatHandle = setInterval(() => {
+    void store.touchJobHeartbeat(job.id).catch(() => undefined);
+  }, heartbeatIntervalMs);
+  heartbeatHandle.unref?.();
 
   try {
     const [currentArtifacts, zipBytes] = await Promise.all([
@@ -178,23 +190,35 @@ export async function processClaimedImportJob({
     await store.deleteRawZip(job.rawObjectKey).catch(() => undefined);
 
     return failedJob;
+  } finally {
+    clearInterval(heartbeatHandle);
   }
 }
 
 export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerStore {
   const supabase = createSupabaseAdminClient();
   const r2 = createR2Client();
+  let currentArtifactKeys: string[] = [];
 
   return {
     async claimNextQueuedJob() {
       return claimNextQueuedImportJob({ supabase });
     },
     async deleteCurrentArtifacts() {
-      await Promise.all([
-        deleteObject({ key: currentManifestKey, r2 }).catch(() => undefined),
-        deleteObject({ key: currentMarketDataKey, r2 }).catch(() => undefined),
-        deleteObject({ key: currentLatestSummaryKey, r2 }).catch(() => undefined),
-      ]);
+      const keys = [
+        currentManifestKey,
+        currentLatestSummaryKey,
+        ...currentArtifactKeys,
+      ];
+      currentArtifactKeys = [];
+
+      await forEachWithConcurrency({
+        concurrency: artifactDeleteConcurrency,
+        items: [...new Set(keys)],
+        worker: async (key) => {
+          await deleteObject({ key, r2 }).catch(() => undefined);
+        },
+      });
     },
     async deleteRawZip(rawObjectKey) {
       await deleteObject({
@@ -217,16 +241,18 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
           key: latestState.latest_manifest_key,
           r2,
         });
-        const marketData = await getJsonObject<MarketDataPayload>({
+        const persisted = await loadPersistedMarketData({
           key: manifest.marketDataKey,
-          r2,
+          readJson: (key) => getJsonObject({ key, r2 }),
         });
+        currentArtifactKeys = persisted.artifactKeys;
 
         return {
           manifest,
-          marketData,
+          marketData: persisted.marketData,
         };
       } catch {
+        currentArtifactKeys = [];
         return {
           manifest: null,
           marketData: createEmptyMarketDataPayload(),
@@ -264,11 +290,19 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
       });
     },
     async persistCurrentArtifacts({ generatedAt, manifest, marketData }) {
-      await putJsonObject({
-        body: marketData,
-        key: currentMarketDataKey,
-        r2,
+      const persisted = planPersistedMarketData({
+        baseKey: currentMarketDataKey,
+        marketData,
       });
+
+      for (const object of persisted.objects) {
+        await putJsonObject({
+          body: object.body,
+          key: object.key,
+          r2,
+        });
+      }
+
       await putJsonObject({
         body: buildLatestSummaryPayload(marketData),
         key: currentLatestSummaryKey,
@@ -286,6 +320,13 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
         status: "ready",
         supabase,
         version: marketData.datasetVersion,
+      });
+      currentArtifactKeys = persisted.artifactKeys;
+    },
+    async touchJobHeartbeat(jobId) {
+      await touchImportJobHeartbeat({
+        jobId,
+        supabase,
       });
     },
   };

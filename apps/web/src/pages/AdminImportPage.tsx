@@ -6,10 +6,14 @@ import type { ImportJobRecord, ImportJobsPayload } from "@stock-prep/shared";
 import { importBulkZip, fetchImportJobs } from "../data/adminImportApi";
 import { stooqBulkImportScopes } from "../data/stooqBulk";
 
+type UploadPhase = "preparing" | "queueing" | "uploading";
+
 type UploadState = {
   error?: string;
   file: File | null;
   isSubmitting: boolean;
+  phase?: UploadPhase;
+  progressPercent?: number;
 };
 
 const initialUploadState = (): UploadState => ({
@@ -39,6 +43,24 @@ export function AdminImportPage() {
     void refreshJobs();
   }, []);
 
+  useEffect(() => {
+    const hasActiveJobs = payload.jobs.some(
+      (job) => job.status === "processing" || job.status === "queued",
+    );
+
+    if (!hasActiveJobs) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      void refreshJobs({ showSpinner: false });
+    }, 5000);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [payload.jobs]);
+
   const jobByScope = useMemo(() => {
     const next = new Map<ImportJobRecord["scopeId"], ImportJobRecord>();
 
@@ -51,8 +73,11 @@ export function AdminImportPage() {
     return next;
   }, [payload.jobs]);
 
-  async function refreshJobs() {
-    setIsLoading(true);
+  async function refreshJobs({ showSpinner = true }: { showSpinner?: boolean } = {}) {
+    if (showSpinner) {
+      setIsLoading(true);
+    }
+
     setLoadError(null);
 
     try {
@@ -60,7 +85,9 @@ export function AdminImportPage() {
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "取り込み状態の取得に失敗しました。");
     } finally {
-      setIsLoading(false);
+      if (showSpinner) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -84,11 +111,36 @@ export function AdminImportPage() {
         ...current[scopeId],
         error: undefined,
         isSubmitting: true,
+        phase: "preparing",
+        progressPercent: 0,
       },
     }));
 
     try {
-      const nextJob = await importBulkZip({ file: state.file, scopeId });
+      const nextJob = await importBulkZip({
+        file: state.file,
+        onProgress: (progressPercent) => {
+          setUploadStateByScope((current) => ({
+            ...current,
+            [scopeId]: {
+              ...current[scopeId],
+              phase: "uploading",
+              progressPercent,
+            },
+          }));
+        },
+        onStageChange: (phase) => {
+          setUploadStateByScope((current) => ({
+            ...current,
+            [scopeId]: {
+              ...current[scopeId],
+              phase,
+              progressPercent: phase === "queueing" ? 100 : (current[scopeId].progressPercent ?? 0),
+            },
+          }));
+        },
+        scopeId,
+      });
 
       setPayload((current) => ({
         ...current,
@@ -100,7 +152,7 @@ export function AdminImportPage() {
         ...current,
         [scopeId]: initialUploadState(),
       }));
-      await refreshJobs();
+      await refreshJobs({ showSpinner: false });
     } catch (error) {
       setUploadStateByScope((current) => ({
         ...current,
@@ -108,6 +160,8 @@ export function AdminImportPage() {
           ...current[scopeId],
           error: error instanceof Error ? error.message : "取り込みに失敗しました。",
           isSubmitting: false,
+          phase: undefined,
+          progressPercent: undefined,
         },
       }));
     }
@@ -122,8 +176,8 @@ export function AdminImportPage() {
               手動 bulk 取り込み
             </h1>
             <p className="max-w-3xl text-base leading-7 text-zinc-700">
-              日本 / 米国 / 英国 / 香港 / world(為替) の ZIP を市場別に取り込みます。
-              サーバー側では R2 と Supabase を更新し、latest manifest を切り替えます。
+              日本 / 米国 / 英国 / 香港 / world(為替) の ZIP を市場別に取り込みます。 ブラウザから
+              R2 へ直接アップロードし、その後 Vercel が queue を作成します。
             </p>
           </div>
           <Link
@@ -136,18 +190,12 @@ export function AdminImportPage() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <InfoCard
-          label="最新 dataset version"
-          value={payload.datasetVersion ?? "未取り込み"}
-        />
+        <InfoCard label="最新 dataset version" value={payload.datasetVersion ?? "未取り込み"} />
         <InfoCard
           label="最新 generatedAt"
           value={payload.generatedAt ? formatTimestamp(payload.generatedAt) : "未取り込み"}
         />
-        <InfoCard
-          label="最新 job 件数"
-          value={`${payload.jobs.length}件`}
-        />
+        <InfoCard label="最新 job 件数" value={`${payload.jobs.length}件`} />
       </div>
 
       {loadError ? (
@@ -203,6 +251,8 @@ export function AdminImportPage() {
                           error: undefined,
                           file: nextFile,
                           isSubmitting: false,
+                          phase: undefined,
+                          progressPercent: undefined,
                         },
                       }));
                     }}
@@ -233,6 +283,22 @@ export function AdminImportPage() {
                     {uploadState.error}
                   </p>
                 ) : null}
+                {uploadState.isSubmitting ? (
+                  <div className="flex flex-col gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-800">
+                    <div className="flex items-center justify-between gap-3">
+                      <span>{describeUploadPhase(uploadState.phase)}</span>
+                      <span className="font-semibold">
+                        {formatProgressPercent(uploadState.progressPercent)}
+                      </span>
+                    </div>
+                    <div aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-sky-100">
+                      <div
+                        className="h-full rounded-full bg-sky-600 transition-[width]"
+                        style={{ width: `${uploadState.progressPercent ?? 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
 
                 <button
                   className="w-fit rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
@@ -242,7 +308,9 @@ export function AdminImportPage() {
                   }}
                   type="button"
                 >
-                  {uploadState.isSubmitting ? "取り込み中..." : "取り込み開始"}
+                  {uploadState.isSubmitting
+                    ? buttonLabelForUploadPhase(uploadState.phase)
+                    : "取り込み開始"}
                 </button>
               </article>
             );
@@ -338,12 +406,12 @@ function StatusPill({ status }: { status?: ImportJobRecord["status"] }) {
     status === "queued"
       ? "bg-sky-50 text-sky-700"
       : status === "processing"
-      ? "bg-amber-50 text-amber-700"
-      : status === "completed"
-        ? "bg-emerald-50 text-emerald-700"
-        : status === "failed"
-          ? "bg-rose-50 text-rose-700"
-          : "bg-zinc-100 text-zinc-700";
+        ? "bg-amber-50 text-amber-700"
+        : status === "completed"
+          ? "bg-emerald-50 text-emerald-700"
+          : status === "failed"
+            ? "bg-rose-50 text-rose-700"
+            : "bg-zinc-100 text-zinc-700";
 
   return <span className={`rounded-md px-2 py-1 text-xs font-semibold ${className}`}>{label}</span>;
 }
@@ -355,4 +423,34 @@ function formatTimestamp(value: string): string {
     month: "2-digit",
     day: "2-digit",
   });
+}
+
+function describeUploadPhase(phase?: UploadPhase): string {
+  switch (phase) {
+    case "preparing":
+      return "アップロード URL を準備しています...";
+    case "uploading":
+      return "R2 へ直接アップロードしています...";
+    case "queueing":
+      return "import job を queued で登録しています...";
+    default:
+      return "取り込みを準備しています...";
+  }
+}
+
+function buttonLabelForUploadPhase(phase?: UploadPhase): string {
+  switch (phase) {
+    case "preparing":
+      return "アップロード準備中...";
+    case "uploading":
+      return "R2 へアップロード中...";
+    case "queueing":
+      return "キュー登録中...";
+    default:
+      return "取り込み中...";
+  }
+}
+
+function formatProgressPercent(progressPercent?: number): string {
+  return `${progressPercent ?? 0}%`;
 }

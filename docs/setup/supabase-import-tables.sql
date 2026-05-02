@@ -37,6 +37,15 @@ create table if not exists public.stock_prep_import_jobs (
 alter table public.stock_prep_import_jobs
   add column if not exists raw_object_key text;
 
+alter table public.stock_prep_import_jobs
+  add column if not exists attempt_count integer not null default 0;
+
+alter table public.stock_prep_import_jobs
+  add column if not exists processing_started_at timestamptz;
+
+alter table public.stock_prep_import_jobs
+  add column if not exists heartbeat_at timestamptz;
+
 update public.stock_prep_import_jobs
 set status = 'processing'
 where status = 'running';
@@ -44,6 +53,15 @@ where status = 'running';
 update public.stock_prep_import_jobs
 set status = 'completed'
 where status = 'succeeded';
+
+update public.stock_prep_import_jobs
+set attempt_count = case
+      when status = 'processing' and attempt_count = 0 then 1
+      else attempt_count
+    end,
+    processing_started_at = coalesce(processing_started_at, started_at),
+    heartbeat_at = coalesce(heartbeat_at, started_at)
+where status = 'processing';
 
 alter table public.stock_prep_import_jobs
   drop constraint if exists stock_prep_import_jobs_status_check;
@@ -54,6 +72,9 @@ alter table public.stock_prep_import_jobs
 
 create index if not exists stock_prep_import_jobs_started_at_idx
   on public.stock_prep_import_jobs (started_at desc);
+
+create index if not exists stock_prep_import_jobs_status_heartbeat_idx
+  on public.stock_prep_import_jobs (status, heartbeat_at, started_at);
 
 create table if not exists public.stock_prep_holdings (
   id text primary key,

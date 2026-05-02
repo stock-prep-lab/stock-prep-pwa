@@ -1,4 +1,9 @@
-import type { CurrencyCode, DataSourceCode, RegionCode, SecurityType } from "./core";
+import type {
+  CurrencyCode,
+  DataSourceCode,
+  RegionCode,
+  SecurityType,
+} from "./core.js";
 
 export type StockSymbol = {
   code: string;
