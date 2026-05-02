@@ -687,6 +687,47 @@
 
 ---
 
+## Slice 17.8: scope 分離された履歴 artifact と worker 進捗ログ整備
+
+### 対象
+- Cloudflare R2 の current artifact を `jp` / `us` / `uk` / `hk` / `fx` の scope 単位で分離する保存設計への見直し
+- scope ごとの `manifest` / `latest summary` / full historical artifact 更新
+- full historical は symbol ごとの object 保存には寄せず、scope ごとの chunk 保存を維持する方針整理
+- 再取り込み時に対象 scope だけ cleanup / 再保存できる導線の整備
+- Slice 19 の銘柄詳細で scope 全体総なめを避けやすくするため、scope ごとの履歴参照導線を追加
+- 各 scope に `symbolId` と履歴 chunk の対応付けを持つ対応表 JSON を追加
+- `pnpm import:worker` の標準出力で、claim / ZIP 読み込み / 正規化 / 保存 / cleanup / 完了 / 失敗が分かる進捗ログの追加
+- 長い取り込み処理中に、現在どの scope / どの段階を処理しているか分かるログ粒度の整理
+
+### 非対象
+- 銘柄詳細 UI 本実装
+- lightweight-charts の導入
+- full historical の symbol ごと object 保存への変更
+- Push 通知
+- Mac `launchd` worker の本番運用強化
+- Cloud Run / GitHub Actions など別 runner への移植
+
+### 完了条件
+- R2 の current artifact が scope 単位で分離され、JP 再取り込み時に US / UK / HK / FX を巻き込まずに更新できる
+- 再取り込み時の cleanup が対象 scope に閉じている
+- full historical は scope ごとの chunk 保存を維持しつつ、各 scope の対応表 JSON から必要な chunk へ到達できる
+- full historical の参照経路が、後続 Slice 19 で scope 内全 chunk 総なめ前提にならない形に整理されている
+- 途中失敗時に、影響範囲が対象 scope に閉じることを確認できる
+- `pnpm import:worker` 実行中に、どの job / scope / 段階を処理しているか標準出力から追える
+- 失敗時ログから、少なくとも失敗 scope・失敗段階・例外理由が分かる
+
+### テスト / 確認観点
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
+- scope ごとの cleanup / 再保存ロジックにユニットテストを追加
+- 実 ZIP を使って、ある scope の再取り込みが他 scope を壊さないことを確認
+- `pnpm import:worker` 実行時の進捗ログを確認し、開始から完了または失敗まで追えることを PR に記載
+- docs-only の変更が中心の場合は文書レビュー観点を PR に記載
+
+---
+
 ## Slice 18: 銘柄マスタ / 検索の本物データ化
 
 ### 対象
