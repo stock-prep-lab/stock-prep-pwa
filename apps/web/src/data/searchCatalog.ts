@@ -1,7 +1,7 @@
 import type { LatestSummaryPayload, RegionCode, StoredStockSymbol } from "@stock-prep/shared";
 
 import { createStockPrepDbRepository, openStockPrepDb } from "../storage/stockPrepDb";
-import { fetchLatestSummary } from "./syncApi";
+import { fetchLatestSummary, fetchMarketData } from "./syncApi";
 
 export type SearchResultStatus = "ready" | "unavailable" | "unsupported";
 
@@ -34,20 +34,45 @@ export async function loadSearchCatalog(): Promise<SearchCatalogLoadResult> {
 
   try {
     const repository = createStockPrepDbRepository(db);
-    const symbols = await repository.listSymbols();
+    const cachedSymbols = await repository.listSymbols();
+
+    if (cachedSymbols.length === 0) {
+      const [latestSummaryResult, marketDataResult] = await Promise.allSettled([
+        fetchLatestSummary(),
+        fetchMarketData(),
+      ]);
+      const latestSummary =
+        latestSummaryResult.status === "fulfilled" ? latestSummaryResult.value : null;
+      const fallbackSymbols =
+        marketDataResult.status === "fulfilled" ? marketDataResult.value.symbols : [];
+
+      return {
+        datasetVersion:
+          latestSummary?.datasetVersion ??
+          (marketDataResult.status === "fulfilled" ? marketDataResult.value.datasetVersion : null),
+        items: buildSearchCatalog({
+          latestSummary,
+          symbols: resolveSearchSymbols({
+            cachedSymbols,
+            fallbackSymbols,
+          }),
+        }),
+        latestSummaryStatus: latestSummary ? "ready" : "unavailable",
+      };
+    }
 
     try {
       const latestSummary = await fetchLatestSummary();
 
       return {
         datasetVersion: latestSummary.datasetVersion,
-        items: buildSearchCatalog({ latestSummary, symbols }),
+        items: buildSearchCatalog({ latestSummary, symbols: cachedSymbols }),
         latestSummaryStatus: "ready",
       };
     } catch {
       return {
         datasetVersion: null,
-        items: buildSearchCatalog({ latestSummary: null, symbols }),
+        items: buildSearchCatalog({ latestSummary: null, symbols: cachedSymbols }),
         latestSummaryStatus: "unavailable",
       };
     }
@@ -180,6 +205,20 @@ function mergeSearchSymbols({
   }
 
   return [...merged.values()];
+}
+
+function resolveSearchSymbols({
+  cachedSymbols,
+  fallbackSymbols,
+}: {
+  cachedSymbols: StoredStockSymbol[];
+  fallbackSymbols: StoredStockSymbol[];
+}): StoredStockSymbol[] {
+  if (cachedSymbols.length > 0) {
+    return cachedSymbols;
+  }
+
+  return fallbackSymbols;
 }
 
 function normalizeSecurityType(

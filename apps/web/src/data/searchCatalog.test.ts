@@ -72,7 +72,7 @@ describe("searchCatalog", () => {
       ],
     });
 
-    expect(items[0]).toMatchObject({
+    expect(items.find((item) => item.code === "9988")).toMatchObject({
       code: "9988",
       status: "unavailable",
       statusLabel: "取得失敗",
@@ -96,6 +96,12 @@ describe("searchCatalog", () => {
         expect.objectContaining({
           code: "TSLA",
           name: "Tesla",
+          status: "ready",
+        }),
+        expect.objectContaining({
+          code: "0700",
+          marketLabel: "香港",
+          name: "Tencent Holdings",
           status: "ready",
         }),
       ]),
@@ -176,6 +182,17 @@ function createLatestSummary(): LatestSummaryPayload {
         region: "JP",
         securityType: "stock",
         sourceSymbol: "7201.jp",
+      },
+      {
+        code: "0700",
+        currency: "HKD",
+        id: "hk-0700",
+        lastClose: 378.4,
+        lastCloseDate: "2026-05-06",
+        name: "Tencent Holdings",
+        region: "HK",
+        securityType: "stock",
+        sourceSymbol: "0700.hk",
       },
       {
         code: "TSLA",

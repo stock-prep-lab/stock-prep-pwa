@@ -1,4 +1,5 @@
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
 
 import { APP_NAME } from "@stock-prep/shared";
 
@@ -11,6 +12,7 @@ import { ScreeningPage } from "./pages/ScreeningPage";
 import { SearchPage } from "./pages/SearchPage";
 import { SimulationPage } from "./pages/SimulationPage";
 import { StockDetailPage } from "./pages/StockDetailPage";
+import { getApiActivitySnapshot, subscribeToApiActivity } from "./data/apiActivity";
 import { useStartupDataSync } from "./data/useStartupDataSync";
 
 type AppRoute = {
@@ -112,9 +114,15 @@ const allRoutes = [...primaryRoutes, ...secondaryRoutes];
 
 function AppShell() {
   useStartupDataSync();
+  const [apiLoading, setApiLoading] = useState(getApiActivitySnapshot());
+
+  useEffect(() => {
+    return subscribeToApiActivity(setApiLoading);
+  }, []);
 
   return (
     <div className="min-h-dvh bg-zinc-50 text-zinc-950">
+      {apiLoading ? <ApiLoadingOverlay /> : null}
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-5 py-4">
           <Link className="text-base font-semibold text-zinc-950" to="/">
@@ -164,6 +172,22 @@ function AppShell() {
       </main>
 
       <BottomTabNav />
+    </div>
+  );
+}
+
+function ApiLoadingOverlay() {
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-zinc-950/18 px-4 pt-20"
+      role="status"
+    >
+      <div className="flex min-h-14 items-center gap-3 rounded-md border border-zinc-200 bg-white px-4 py-3 shadow-lg">
+        <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-teal-700" />
+        <p className="text-sm font-medium text-zinc-800">データを読み込んでいます。</p>
+      </div>
     </div>
   );
 }

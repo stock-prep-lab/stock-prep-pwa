@@ -4,9 +4,10 @@ import type {
   ImportJobsPayload,
   ImportUploadSessionPayload,
 } from "@stock-prep/shared";
+import { fetchWithApiActivity, runWithApiActivity } from "./apiActivity";
 
 export async function fetchImportJobs(): Promise<ImportJobsPayload> {
-  const response = await fetch("/api/admin/import-jobs");
+  const response = await fetchWithApiActivity("/api/admin/import-jobs");
   return readJsonResponse<ImportJobsPayload>(response);
 }
 
@@ -21,44 +22,46 @@ export async function importBulkZip({
   onStageChange?: (stage: "preparing" | "queueing" | "uploading") => void;
   scopeId: ImportJobRecord["scopeId"];
 }): Promise<ImportJobRecord> {
-  onStageChange?.("preparing");
-  const uploadSession = await createImportUploadSession({
-    contentType: file.type || "application/zip",
-    fileName: file.name,
-    fileSize: file.size,
-    scopeId,
+  return runWithApiActivity(async () => {
+    onStageChange?.("preparing");
+    const uploadSession = await createImportUploadSession({
+      contentType: file.type || "application/zip",
+      fileName: file.name,
+      fileSize: file.size,
+      scopeId,
+    });
+
+    if (uploadSession.mode === "server-proxy") {
+      return uploadViaServerProxy({ file, scopeId });
+    }
+
+    onStageChange?.("uploading");
+    await uploadFileToR2({
+      file,
+      onProgress,
+      uploadSession,
+    });
+
+    onStageChange?.("queueing");
+    const response = await fetchWithApiActivity("/api/admin/import-jobs", {
+      body: JSON.stringify({
+        action: "finalize-upload",
+        finalizeToken: uploadSession.finalizeToken,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    return readJsonResponse<ImportJobRecord>(response);
   });
-
-  if (uploadSession.mode === "server-proxy") {
-    return uploadViaServerProxy({ file, scopeId });
-  }
-
-  onStageChange?.("uploading");
-  await uploadFileToR2({
-    file,
-    onProgress,
-    uploadSession,
-  });
-
-  onStageChange?.("queueing");
-  const response = await fetch("/api/admin/import-jobs", {
-    body: JSON.stringify({
-      action: "finalize-upload",
-      finalizeToken: uploadSession.finalizeToken,
-    }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-  });
-
-  return readJsonResponse<ImportJobRecord>(response);
 }
 
 async function createImportUploadSession(
   request: CreateImportUploadSessionRequest,
 ): Promise<ImportUploadSessionPayload> {
-  const response = await fetch("/api/admin/import-jobs", {
+  const response = await fetchWithApiActivity("/api/admin/import-jobs", {
     body: JSON.stringify({
       action: "prepare-upload",
       ...request,
@@ -83,7 +86,7 @@ async function uploadViaServerProxy({
   formData.set("file", file);
   formData.set("scopeId", scopeId);
 
-  const response = await fetch("/api/admin/import-jobs", {
+  const response = await fetchWithApiActivity("/api/admin/import-jobs", {
     body: formData,
     method: "POST",
   });
