@@ -1,100 +1,98 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-type StockItem = {
-  code: string;
-  name: string;
-  market: string;
-  sector: string;
-  price: string;
-  changeRate: string;
-  note: string;
-};
+import {
+  filterSearchCatalog,
+  formatRegionLabel,
+  loadSearchCatalog,
+  type SearchCatalogItem,
+  type SearchRegionFilter,
+} from "../data/searchCatalog";
+import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 
-type WatchItem = {
-  code: string;
-  name: string;
-  memo: string;
-};
+type SearchPageState =
+  | {
+      status: "loading";
+    }
+  | {
+      datasetVersion: string | null;
+      items: SearchCatalogItem[];
+      latestSummaryStatus: "ready" | "unavailable";
+      status: "ready";
+    }
+  | {
+      message: string;
+      status: "error";
+    };
 
-const recentStocks: StockItem[] = [
-  {
-    code: "7203",
-    name: "トヨタ自動車",
-    market: "東証プライム",
-    sector: "輸送用機器",
-    price: "3,218円",
-    changeRate: "+2.8%",
-    note: "候補ランキングから確認",
-  },
-  {
-    code: "6758",
-    name: "ソニーグループ",
-    market: "東証プライム",
-    sector: "電気機器",
-    price: "14,240円",
-    changeRate: "+1.9%",
-    note: "直近高値を確認",
-  },
-];
-
-const watchStocks: WatchItem[] = [
-  {
-    code: "9432",
-    name: "日本電信電話",
-    memo: "配当目的で監視",
-  },
-  {
-    code: "8306",
-    name: "三菱UFJフィナンシャル・グループ",
-    memo: "金利感応度を確認",
-  },
-  {
-    code: "8058",
-    name: "三菱商事",
-    memo: "資源セクターの代表候補",
-  },
-];
-
-const searchResults: StockItem[] = [
-  {
-    code: "7203",
-    name: "トヨタ自動車",
-    market: "東証プライム",
-    sector: "輸送用機器",
-    price: "3,218円",
-    changeRate: "+2.8%",
-    note: "大型株。出来高を伴う上昇を確認。",
-  },
-  {
-    code: "7267",
-    name: "本田技研工業",
-    market: "東証プライム",
-    sector: "輸送用機器",
-    price: "1,742円",
-    changeRate: "+0.8%",
-    note: "移動平均線付近で推移。",
-  },
-  {
-    code: "6902",
-    name: "デンソー",
-    market: "東証プライム",
-    sector: "輸送用機器",
-    price: "2,183円",
-    changeRate: "-0.3%",
-    note: "押し目候補として監視。",
-  },
-  {
-    code: "6201",
-    name: "豊田自動織機",
-    market: "東証プライム",
-    sector: "輸送用機器",
-    price: "12,880円",
-    changeRate: "+1.1%",
-    note: "関連銘柄として比較。",
-  },
+const regionFilters: Array<{ label: string; value: SearchRegionFilter }> = [
+  { label: "すべて", value: "ALL" },
+  { label: formatRegionLabel("JP"), value: "JP" },
+  { label: formatRegionLabel("US"), value: "US" },
+  { label: formatRegionLabel("HK"), value: "HK" },
 ];
 
 export function SearchPage() {
+  const [draftQuery, setDraftQuery] = useState("");
+  const [query, setQuery] = useState("");
+  const [regionFilter, setRegionFilter] = useState<SearchRegionFilter>("ALL");
+  const [state, setState] = useState<SearchPageState>({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      if (!cancelled) {
+        setState((current) => (current.status === "ready" ? current : { status: "loading" }));
+      }
+
+      try {
+        const result = await loadSearchCatalog();
+
+        if (cancelled) {
+          return;
+        }
+
+        setState({
+          datasetVersion: result.datasetVersion,
+          items: result.items,
+          latestSummaryStatus: result.latestSummaryStatus,
+          status: "ready",
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setState({
+          message: error instanceof Error ? error.message : "検索データを読み込めませんでした。",
+          status: "error",
+        });
+      }
+    };
+
+    void load();
+    const unsubscribe = subscribeToStockPrepDataChanged(() => {
+      void load();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  const filteredItems = useMemo(() => {
+    if (state.status !== "ready") {
+      return [];
+    }
+
+    return filterSearchCatalog(state.items, {
+      query,
+      region: regionFilter,
+    });
+  }, [query, regionFilter, state]);
+
   return (
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-4">
@@ -102,25 +100,52 @@ export function SearchPage() {
         <div className="flex flex-col gap-3">
           <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">検索</h1>
           <p className="max-w-2xl text-base leading-7 text-zinc-700">
-            銘柄名やコードから候補を探します。今は静的な検索結果を表示しています。
+            取り込み済みの軽量データから、銘柄コードや銘柄名の一部で候補を探します。
           </p>
         </div>
       </div>
 
-      <form className="flex flex-col gap-3 md:flex-row">
-        <label className="flex min-w-0 flex-1 flex-col gap-2">
+      <form
+        className="grid gap-3 lg:grid-cols-[12rem_minmax(0,1fr)_auto]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setQuery(draftQuery);
+        }}
+      >
+        <label className="flex min-w-0 flex-col gap-2">
+          <span className="text-sm font-medium text-zinc-700">市場</span>
+          <select
+            className="min-h-12 rounded-md border border-zinc-300 bg-white px-3 text-base text-zinc-950 outline-none transition focus:border-teal-700"
+            onChange={(event) => {
+              setRegionFilter(event.target.value as SearchRegionFilter);
+            }}
+            value={regionFilter}
+          >
+            {regionFilters.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex min-w-0 flex-col gap-2">
           <span className="text-sm font-medium text-zinc-700">検索キーワード</span>
           <input
             className="min-h-12 rounded-md border border-zinc-300 bg-white px-3 text-base text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-teal-700"
-            defaultValue="トヨタ"
             inputMode="search"
+            onChange={(event) => {
+              setDraftQuery(event.target.value);
+            }}
             placeholder="銘柄名またはコード"
             type="search"
+            value={draftQuery}
           />
         </label>
+
         <button
-          className="min-h-12 rounded-md bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-teal-700 md:self-end"
-          type="button"
+          className="min-h-12 rounded-md bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-teal-700 lg:self-end"
+          type="submit"
         >
           検索
         </button>
@@ -129,90 +154,120 @@ export function SearchPage() {
       <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
         <section className="flex flex-col gap-4" aria-labelledby="recent-stocks-heading">
           <SectionHeader
-            description="直近で確認した銘柄です。"
+            description="最近見た銘柄は、銘柄詳細を開いた後にここへ並べる予定です。"
             title="最近見た銘柄"
             titleId="recent-stocks-heading"
           />
-
-          <div className="grid gap-3">
-            {recentStocks.map((stock) => (
-              <CompactStockCard key={stock.code} stock={stock} />
-            ))}
-          </div>
+          <EmptyPanel message="まだ最近見た銘柄はありません。" />
         </section>
 
         <section className="flex flex-col gap-4" aria-labelledby="watch-stocks-heading">
           <SectionHeader
-            description="継続して見たい銘柄のメモです。"
+            description="ウォッチ銘柄は後続 Slice で管理できるようにします。"
             title="ウォッチ銘柄"
             titleId="watch-stocks-heading"
           />
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            {watchStocks.map((stock) => (
-              <Link
-                className="flex min-h-32 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 transition hover:border-teal-700"
-                key={stock.code}
-                to={`/stocks/${stock.code}`}
-              >
-                <div>
-                  <h2 className="text-lg font-semibold tracking-normal">{stock.name}</h2>
-                  <p className="mt-1 text-sm text-zinc-600">{stock.code}</p>
-                </div>
-                <p className="text-sm leading-6 text-zinc-700">{stock.memo}</p>
-              </Link>
-            ))}
-          </div>
+          <EmptyPanel message="まだウォッチ銘柄はありません。" />
         </section>
       </div>
 
       <section className="flex flex-col gap-4" aria-labelledby="search-results-heading">
         <SectionHeader
-          description="検索キーワードに一致した想定のダミー結果です。"
+          description="株式と ETF を対象に、銘柄コード / 銘柄名 / 市場 / 通貨 / 商品種別で絞り込みます。"
           title="検索結果"
           titleId="search-results-heading"
         />
 
-        <div className="overflow-hidden rounded-md border border-zinc-200 bg-white">
-          <div className="hidden grid-cols-[1fr_8rem_8rem_8rem] border-b border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-600 md:grid">
-            <span>銘柄</span>
-            <span>市場</span>
-            <span>株価</span>
-            <span>前日比</span>
-          </div>
+        {state.status === "loading" ? (
+          <NoticePanel tone="neutral">
+            取り込み済みデータを読み込んでいます。
+          </NoticePanel>
+        ) : state.status === "error" ? (
+          <NoticePanel tone="error">{state.message}</NoticePanel>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
+              <p>{filteredItems.length.toLocaleString("ja-JP")}件を表示しています。</p>
+              <p className="whitespace-nowrap">
+                dataset version: {state.datasetVersion ?? "-"}
+              </p>
+            </div>
 
-          <div className="divide-y divide-zinc-200">
-            {searchResults.map((stock) => (
-              <Link
-                className="grid gap-3 p-4 text-zinc-950 transition hover:bg-zinc-50 md:grid-cols-[1fr_8rem_8rem_8rem] md:items-center"
-                key={stock.code}
-                to={`/stocks/${stock.code}`}
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold tracking-normal">{stock.name}</h2>
-                    <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
-                      {stock.code}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-zinc-600">{stock.sector}</p>
-                  <p className="mt-2 text-sm leading-6 text-zinc-700 md:hidden">{stock.note}</p>
+            {state.latestSummaryStatus === "unavailable" ? (
+              <NoticePanel tone="warning">
+                最新サマリーの取得に失敗したため、銘柄キャッシュのみを表示しています。
+              </NoticePanel>
+            ) : null}
+
+            {filteredItems.length === 0 ? (
+              <EmptyPanel
+                message={
+                  state.items.length === 0
+                    ? "まだ検索対象の銘柄キャッシュがありません。取り込みと同期の完了後に結果を表示します。"
+                    : "条件に一致する銘柄は見つかりませんでした。"
+                }
+              />
+            ) : (
+              <div className="overflow-hidden rounded-md border border-zinc-200 bg-white">
+                <div className="hidden grid-cols-[minmax(0,1.4fr)_5rem_5rem_5rem_7rem_6rem] border-b border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-600 md:grid">
+                  <span>銘柄</span>
+                  <span className="whitespace-nowrap text-center">市場</span>
+                  <span className="whitespace-nowrap text-center">通貨</span>
+                  <span className="whitespace-nowrap text-center">種別</span>
+                  <span className="whitespace-nowrap text-right">終値</span>
+                  <span className="whitespace-nowrap text-center">状態</span>
                 </div>
-                <p className="text-sm text-zinc-700">{stock.market}</p>
-                <p className="text-sm font-semibold text-zinc-950">{stock.price}</p>
-                <p
-                  className={
-                    stock.changeRate.startsWith("+")
-                      ? "text-sm font-semibold text-emerald-700"
-                      : "text-sm font-semibold text-amber-700"
-                  }
-                >
-                  {stock.changeRate}
-                </p>
-              </Link>
-            ))}
-          </div>
-        </div>
+
+                <div className="divide-y divide-zinc-200">
+                  {filteredItems.map((item) => (
+                    <Link
+                      className="grid gap-3 p-4 text-zinc-950 transition hover:bg-zinc-50 md:grid-cols-[minmax(0,1.4fr)_5rem_5rem_5rem_7rem_6rem] md:items-center"
+                      key={item.id}
+                      to={`/stocks/${item.code}?region=${item.region}`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-lg font-semibold tracking-normal">{item.name}</h2>
+                          <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
+                            {item.code}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-sm text-zinc-600 md:hidden">
+                          <span>{item.marketLabel}</span>
+                          <span>{item.currency}</span>
+                          <span>{item.securityTypeLabel}</span>
+                        </div>
+                        {item.statusReason ? (
+                          <p className="mt-2 text-sm leading-6 text-zinc-700">{item.statusReason}</p>
+                        ) : item.lastCloseDate ? (
+                          <p className="mt-2 text-sm leading-6 text-zinc-700">
+                            終値日付: {item.lastCloseDate}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <p className="hidden text-center text-sm text-zinc-700 md:block">
+                        {item.marketLabel}
+                      </p>
+                      <p className="hidden text-center text-sm text-zinc-700 md:block">
+                        {item.currency}
+                      </p>
+                      <p className="hidden text-center text-sm text-zinc-700 md:block">
+                        {item.securityTypeLabel}
+                      </p>
+                      <p className="text-sm font-semibold text-zinc-950 md:text-right">
+                        {formatLastClose(item)}
+                      </p>
+                      <div className="md:flex md:justify-center">
+                        <StatusBadge item={item} />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </section>
     </section>
   );
@@ -237,31 +292,57 @@ function SectionHeader({
   );
 }
 
-function CompactStockCard({ stock }: { stock: StockItem }) {
+function EmptyPanel({ message }: { message: string }) {
   return (
-    <Link
-      className="flex min-h-36 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 transition hover:border-teal-700"
-      to={`/stocks/${stock.code}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold tracking-normal">{stock.name}</h2>
-          <p className="mt-1 text-sm text-zinc-600">{stock.code}</p>
-        </div>
-        <span
-          className={
-            stock.changeRate.startsWith("+")
-              ? "rounded-md bg-emerald-50 px-2 py-1 text-sm font-semibold text-emerald-700"
-              : "rounded-md bg-amber-50 px-2 py-1 text-sm font-semibold text-amber-700"
-          }
-        >
-          {stock.changeRate}
-        </span>
-      </div>
-      <div>
-        <p className="text-sm font-medium text-zinc-950">{stock.price}</p>
-        <p className="mt-1 text-sm leading-6 text-zinc-700">{stock.note}</p>
-      </div>
-    </Link>
+    <div className="rounded-md border border-dashed border-zinc-300 bg-white p-5 text-sm leading-6 text-zinc-600">
+      {message}
+    </div>
   );
+}
+
+function NoticePanel({
+  children,
+  tone,
+}: {
+  children: string;
+  tone: "error" | "neutral" | "warning";
+}) {
+  const className =
+    tone === "error"
+      ? "border-rose-200 bg-rose-50 text-rose-700"
+      : tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-zinc-200 bg-white text-zinc-700";
+
+  return <div className={`rounded-md border px-4 py-3 text-sm leading-6 ${className}`}>{children}</div>;
+}
+
+function StatusBadge({ item }: { item: SearchCatalogItem }) {
+  const className =
+    item.status === "ready"
+      ? "bg-emerald-50 text-emerald-700"
+      : item.status === "unsupported"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-rose-50 text-rose-700";
+
+  return (
+    <span
+      className={`inline-flex w-fit whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold ${className}`}
+    >
+      {item.statusLabel}
+    </span>
+  );
+}
+
+function formatLastClose(item: SearchCatalogItem): string {
+  if (item.lastClose === null) {
+    return "-";
+  }
+
+  const fractionDigits = item.currency === "JPY" ? 0 : 2;
+
+  return new Intl.NumberFormat("ja-JP", {
+    maximumFractionDigits: fractionDigits,
+    minimumFractionDigits: fractionDigits,
+  }).format(item.lastClose);
 }

@@ -10,6 +10,7 @@ import type {
   ImportJobRecord,
   ImportJobsPayload,
   ImportUploadSessionPayload,
+  LatestSummaryPayload,
   MarketDataPayload,
   PortfolioHolding,
   UpsertHoldingRequest,
@@ -17,6 +18,7 @@ import type {
 
 import { dummyStockPrepSnapshot } from "../data/seedSnapshot.js";
 import type { StockPrepMarketDataManifest } from "./stockPrepImport.js";
+import { buildLatestSummaryPayload } from "./stockPrepImport.js";
 import { loadPersistedMarketData } from "./stockPrepMarketDataStorage.js";
 import {
   assertObjectExists,
@@ -92,6 +94,7 @@ type StockPrepServerBackend = {
   }): Promise<DatasetVersionPayload>;
   getHoldingsPayload(): Promise<HoldingsPayload>;
   getImportJobsPayload(): Promise<ImportJobsPayload>;
+  getLatestSummaryPayload(): Promise<LatestSummaryPayload>;
   getMarketDataPayload(): Promise<MarketDataPayload>;
   importMarketZip(args: {
     fileName: string;
@@ -164,6 +167,9 @@ function createInMemoryBackend(): StockPrepServerBackend {
         generatedAt: marketDataPayload.generatedAt,
         jobs: structuredClone(importJobs),
       };
+    },
+    async getLatestSummaryPayload() {
+      return buildLatestSummaryPayload(structuredClone(getInMemoryState().marketDataPayload));
     },
     async getMarketDataPayload() {
       return structuredClone(getInMemoryState().marketDataPayload);
@@ -390,6 +396,31 @@ function createRemoteBackend(): StockPrepServerBackend {
         generatedAt: datasetState?.generated_at ?? null,
         jobs: importJobs,
       };
+    },
+    async getLatestSummaryPayload() {
+      try {
+        const latestState = await loadLatestDatasetState({ supabase });
+
+        if (!latestState) {
+          return createInMemoryBackend().getLatestSummaryPayload();
+        }
+
+        const manifest = await getJsonObject<StockPrepMarketDataManifest>({
+          key: latestState.latest_manifest_key,
+          r2,
+        });
+
+        return getJsonObject<LatestSummaryPayload>({
+          key: manifest.latestSummaryKey,
+          r2,
+        });
+      } catch (error) {
+        console.error(
+          "Falling back to dummy latest summary because remote latest summary load failed.",
+          error,
+        );
+        return createInMemoryBackend().getLatestSummaryPayload();
+      }
     },
     async getMarketDataPayload() {
       try {
