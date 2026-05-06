@@ -1074,7 +1074,6 @@ function findLatestJpyConversionRate(
   }
 
   const pairByCurrency = {
-    GBP: "GBPJPY",
     HKD: "HKDJPY",
     USD: "USDJPY",
   } satisfies Record<Exclude<CurrencyCode, "JPY">, ExchangeRateBar["pair"]>;

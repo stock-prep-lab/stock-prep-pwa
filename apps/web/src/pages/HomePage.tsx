@@ -127,8 +127,8 @@ export function HomePage() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard label="対象日" value={updateSummary.marketDate} />
             <MetricCard label="取込時刻" value={updateSummary.importedAt} />
-            <MetricCard label="銘柄数" value={`${updateSummary.symbolCount}件`} />
-            <MetricCard label="価格件数" value={`${updateSummary.priceCount}件`} />
+            <MetricCard label="銘柄数" value={formatCount(updateSummary.symbolCount)} />
+            <MetricCard label="価格件数" value={formatCount(updateSummary.priceCount)} />
           </div>
         </div>
 
@@ -252,6 +252,10 @@ export function HomePage() {
       </section>
     </section>
   );
+}
+
+function formatCount(value: number): string {
+  return `${new Intl.NumberFormat("ja-JP").format(value)}件`;
 }
 
 function SectionHeader({

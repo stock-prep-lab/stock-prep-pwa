@@ -8,7 +8,7 @@ export type StooqImportStatus = "failed" | "imported" | "noData" | "unsupported"
 
 export type StooqBulkImportScope = {
   bundleCode: string;
-  id: "HK" | "JP" | "UK" | "US" | "FX";
+  id: "HK" | "JP" | "US" | "FX";
   label: string;
 };
 
@@ -101,11 +101,6 @@ export const stooqBulkImportScopes: readonly StooqBulkImportScope[] = [
     label: "U.S. daily ASCII",
   },
   {
-    bundleCode: "d_uk_txt",
-    id: "UK",
-    label: "U.K. daily ASCII",
-  },
-  {
     bundleCode: "d_hk_txt",
     id: "HK",
     label: "Hong Kong daily ASCII",
@@ -128,16 +123,9 @@ const stooqBulkCategoryRules: readonly StooqBulkCategoryRule[] = [
   { instrumentType: "etf", kind: "supported", pathFragment: "nysemkt etfs", region: "US" },
   {
     kind: "unsupported",
-    pathFragment: "lse stocks intl",
-    reason: "LSE international stocks are outside the MVP universe.",
-  },
-  {
-    kind: "unsupported",
     pathFragment: "hkex reits",
     reason: "Hong Kong REIT products are outside the MVP universe.",
   },
-  { instrumentType: "stock", kind: "supported", pathFragment: "lse stocks", region: "UK" },
-  { instrumentType: "etf", kind: "supported", pathFragment: "lse etfs", region: "UK" },
   { instrumentType: "stock", kind: "supported", pathFragment: "hkex stocks", region: "HK" },
   { instrumentType: "etf", kind: "supported", pathFragment: "hkex etfs", region: "HK" },
   {

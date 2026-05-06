@@ -13,7 +13,6 @@
 ### 対象市場
 - 日本株
 - 米国株
-- 英国株
 - 香港株
 
 ### 対象商品
@@ -30,10 +29,10 @@
 - DRS / CBBC / DWS などの派生的な商品カテゴリ
 
 ### Stooq bulk 取り込み方針
-- 市場別の daily ASCII bulk を日本 / 米国 / 英国 / 香港に分けて取り込む
+- 市場別の daily ASCII bulk を日本 / 米国 / 香港に分けて取り込む
 - 管理者は必要な市場の ZIP を毎日アップロードする
 - bulk 内の Stooq カテゴリから、株式 / ETF / REIT のみを保存対象にする
-- ETF は Stooq 上の `tse etfs` / `nasdaq etfs` / `nyse etfs` / `lse etfs` / `hkex etfs` などを対象にする
+- ETF は Stooq 上の `tse etfs` / `nasdaq etfs` / `nyse etfs` / `hkex etfs` などを対象にする
 - REIT は Stooq 上で独立カテゴリがある場合は対象にし、独立カテゴリがない市場では銘柄マスタ側の商品種別で分類する
 - 空の価格ファイルは取り込み失敗ではなく、価格データなし状態として保存する
 - 壊れたファイル、想定外の列形式、ネットワーク失敗は取り込み失敗として扱う
@@ -44,19 +43,16 @@
 | --- | --- | --- | --- |
 | 日本 | 株式 / ETF / REIT | `tse stocks`, `tse etfs`, 銘柄マスタで REIT 判定 | futures, options, bonds, indices |
 | 米国 | 株式 / ETF / REIT | `nasdaq stocks`, `nyse stocks`, `nysemkt stocks`, `nasdaq etfs`, `nyse etfs`, 銘柄マスタで REIT 判定 | futures, options, bonds, indices |
-| 英国 | 株式 / ETF / REIT | `lse stocks`, `lse stocks intl`, `lse etfs`, 銘柄マスタで REIT 判定 | futures, options, bonds, indices |
 | 香港 | 株式 / ETF / REIT | `hkex stocks`, `hkex etfs`, `hkex reits` | cbbcs, dws, drs, bonds |
-| 為替 | JPY 換算に必要な通貨ペア | `USDJPY`, `GBPJPY`, `HKDJPY` | MVP に不要な通貨ペア |
+| 為替 | JPY 換算に必要な通貨ペア | `USDJPY`, `HKDJPY` | MVP に不要な通貨ペア |
 
 ### Stooq symbol 方針
 - アプリ内の銘柄コードと Stooq 取得用 symbol を分けて保持する
 - 市場ごとの suffix を銘柄マスタで管理する
 - 例: 米国株 `AAPL.US`
-- 例: 英国株 `AV.UK`
 - 例: 香港株 `0700.HK`
 - 為替は Stooq の通貨ペア symbol を保持する
   - 例: `USDJPY`
-  - 例: `GBPJPY`
   - 例: `HKDJPY`
 
 ### 価格データ

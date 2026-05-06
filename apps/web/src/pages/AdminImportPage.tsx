@@ -35,7 +35,6 @@ export function AdminImportPage() {
     FX: initialUploadState(),
     HK: initialUploadState(),
     JP: initialUploadState(),
-    UK: initialUploadState(),
     US: initialUploadState(),
   });
 
@@ -176,7 +175,7 @@ export function AdminImportPage() {
               手動 bulk 取り込み
             </h1>
             <p className="max-w-3xl text-base leading-7 text-zinc-700">
-              日本 / 米国 / 英国 / 香港 / world(為替) の ZIP を市場別に取り込みます。 ブラウザから
+              日本 / 米国 / 香港 / world(為替) の ZIP を市場別に取り込みます。 ブラウザから
               R2 へ直接アップロードし、その後 Vercel が queue を作成します。
             </p>
           </div>
@@ -195,7 +194,7 @@ export function AdminImportPage() {
           label="最新 generatedAt"
           value={payload.generatedAt ? formatTimestamp(payload.generatedAt) : "未取り込み"}
         />
-        <InfoCard label="最新 job 件数" value={`${payload.jobs.length}件`} />
+        <InfoCard label="最新 job 件数" value={formatCount(payload.jobs.length)} />
       </div>
 
       {loadError ? (
@@ -265,11 +264,11 @@ export function AdminImportPage() {
                   <JobMetric label="最新 file" value={latestJob?.fileName ?? "未実行"} />
                   <JobMetric
                     label="銘柄数"
-                    value={latestJob ? `${latestJob.symbolCount}件` : "未実行"}
+                    value={latestJob ? formatCount(latestJob.symbolCount) : "未実行"}
                   />
                   <JobMetric
                     label="価格数"
-                    value={latestJob ? `${latestJob.dailyPriceCount}件` : "未実行"}
+                    value={latestJob ? formatCount(latestJob.dailyPriceCount) : "未実行"}
                   />
                 </div>
 
@@ -335,31 +334,44 @@ export function AdminImportPage() {
               <table className="min-w-full border-collapse text-sm">
                 <thead className="bg-zinc-50 text-left text-zinc-600">
                   <tr>
-                    <th className="px-4 py-3 font-medium">市場</th>
-                    <th className="px-4 py-3 font-medium">状態</th>
-                    <th className="px-4 py-3 font-medium">ファイル</th>
-                    <th className="px-4 py-3 font-medium">開始</th>
-                    <th className="px-4 py-3 font-medium">終了</th>
-                    <th className="px-4 py-3 font-medium">dataset</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">市場</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">状態</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">ファイル</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">開始</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">終了</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">dataset version</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">エラー</th>
                   </tr>
                 </thead>
                 <tbody>
                   {payload.jobs.map((job) => (
                     <tr className="border-t border-zinc-100" key={job.id}>
-                      <td className="px-4 py-3 text-zinc-800">{job.scopeId}</td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-800">
+                        {job.scopeId}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 align-top">
                         <StatusPill status={job.status} />
                       </td>
-                      <td className="px-4 py-3 text-zinc-700">{job.fileName}</td>
-                      <td className="px-4 py-3 text-zinc-700">{formatTimestamp(job.startedAt)}</td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-700">
+                        {job.fileName}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-700">
+                        {formatTimestamp(job.startedAt)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-700">
                         {job.finishedAt ? formatTimestamp(job.finishedAt) : "-"}
                       </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-700">
                         {job.datasetVersion ?? "-"}
+                      </td>
+                      <td className="min-w-80 max-w-xl px-4 py-3 align-top text-zinc-700">
                         {job.errorMessage ? (
-                          <p className="mt-1 text-xs text-rose-700">{job.errorMessage}</p>
-                        ) : null}
+                          <p className="break-all text-xs leading-5 text-rose-700">
+                            {job.errorMessage}
+                          </p>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -413,7 +425,13 @@ function StatusPill({ status }: { status?: ImportJobRecord["status"] }) {
             ? "bg-rose-50 text-rose-700"
             : "bg-zinc-100 text-zinc-700";
 
-  return <span className={`rounded-md px-2 py-1 text-xs font-semibold ${className}`}>{label}</span>;
+  return (
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold ${className}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 function formatTimestamp(value: string): string {
@@ -423,6 +441,10 @@ function formatTimestamp(value: string): string {
     month: "2-digit",
     day: "2-digit",
   });
+}
+
+function formatCount(value: number): string {
+  return `${new Intl.NumberFormat("ja-JP").format(value)}件`;
 }
 
 function describeUploadPhase(phase?: UploadPhase): string {

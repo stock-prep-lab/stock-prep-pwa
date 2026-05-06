@@ -36,7 +36,7 @@ export type DailyPriceBar = {
 
 export type ExchangeRateBar = {
   id: string;
-  pair: "USDJPY" | "GBPJPY" | "HKDJPY";
+  pair: "USDJPY" | "HKDJPY";
   baseCurrency: Exclude<CurrencyCode, "JPY">;
   quoteCurrency: "JPY";
   date: string;

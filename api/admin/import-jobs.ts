@@ -5,7 +5,7 @@ import {
   handleListImportJobsRequest,
 } from "../../apps/web/src/server/stockPrepApiHandlers.js";
 
-type ImportScopeId = "FX" | "HK" | "JP" | "UK" | "US";
+type ImportScopeId = "FX" | "HK" | "JP" | "US";
 
 type CreateImportUploadSessionRequestBody = {
   contentType: string;
@@ -19,7 +19,7 @@ type FinalizeImportUploadRequestBody = {
 };
 
 function isScopeId(value: string): value is ImportScopeId {
-  return value === "FX" || value === "HK" || value === "JP" || value === "UK" || value === "US";
+  return value === "FX" || value === "HK" || value === "JP" || value === "US";
 }
 
 export default {

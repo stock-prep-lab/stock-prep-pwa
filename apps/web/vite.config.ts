@@ -73,7 +73,6 @@ function stockPrepApiDevPlugin(): Plugin {
               (scopeId !== "FX" &&
                 scopeId !== "HK" &&
                 scopeId !== "JP" &&
-                scopeId !== "UK" &&
                 scopeId !== "US")
             ) {
               sendJson(response, 400, { error: "scopeId が不正です。" });
