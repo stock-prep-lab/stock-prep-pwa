@@ -33,6 +33,7 @@ const regionFilters: Array<{ label: string; value: SearchRegionFilter }> = [
 ];
 
 export function SearchPage() {
+  const [draftQuery, setDraftQuery] = useState("");
   const [query, setQuery] = useState("");
   const [regionFilter, setRegionFilter] = useState<SearchRegionFilter>("ALL");
   const [state, setState] = useState<SearchPageState>({ status: "loading" });
@@ -99,7 +100,7 @@ export function SearchPage() {
         <div className="flex flex-col gap-3">
           <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">検索</h1>
           <p className="max-w-2xl text-base leading-7 text-zinc-700">
-            取り込み済みの軽量データから、銘柄コードや銘柄名で候補を探します。
+            取り込み済みの軽量データから、銘柄コードや銘柄名の一部で候補を探します。
           </p>
         </div>
       </div>
@@ -108,6 +109,7 @@ export function SearchPage() {
         className="grid gap-3 lg:grid-cols-[12rem_minmax(0,1fr)_auto]"
         onSubmit={(event) => {
           event.preventDefault();
+          setQuery(draftQuery);
         }}
       >
         <label className="flex min-w-0 flex-col gap-2">
@@ -133,11 +135,11 @@ export function SearchPage() {
             className="min-h-12 rounded-md border border-zinc-300 bg-white px-3 text-base text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-teal-700"
             inputMode="search"
             onChange={(event) => {
-              setQuery(event.target.value);
+              setDraftQuery(event.target.value);
             }}
             placeholder="銘柄名またはコード"
             type="search"
-            value={query}
+            value={draftQuery}
           />
         </label>
 
