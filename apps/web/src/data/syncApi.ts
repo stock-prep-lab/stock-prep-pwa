@@ -1,6 +1,7 @@
 import type {
   DatasetVersionPayload,
   HoldingsPayload,
+  LatestSummaryPayload,
   MarketDataPayload,
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
@@ -22,6 +23,11 @@ export async function fetchDatasetVersion(
 export async function fetchMarketData(): Promise<MarketDataPayload> {
   const response = await fetch("/api/market-data");
   return readJsonResponse<MarketDataPayload>(response);
+}
+
+export async function fetchLatestSummary(): Promise<LatestSummaryPayload> {
+  const response = await fetch("/api/latest-summary");
+  return readJsonResponse<LatestSummaryPayload>(response);
 }
 
 export async function fetchHoldings(): Promise<HoldingsPayload> {

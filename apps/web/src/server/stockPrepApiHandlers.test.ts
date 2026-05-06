@@ -6,6 +6,7 @@ import {
   handleDatasetVersionRequest,
   handleGetHoldingsRequest,
   handleImportMarketZipRequest,
+  handleLatestSummaryRequest,
   handleListImportJobsRequest,
   handleMarketDataRequest,
   handleUpsertHoldingRequest,
@@ -75,6 +76,20 @@ describe("stockPrepApiHandlers", () => {
     expect(payload.dailyPrices.length).toBeGreaterThan(0);
     expect(payload.exchangeRates.length).toBeGreaterThan(0);
     expect(payload.datasetVersion).toBe("server-market-v1");
+  });
+
+  it("returns the current latest summary payload", async () => {
+    const payload = await handleLatestSummaryRequest();
+
+    expect(payload.datasetVersion).toBe("server-market-v1");
+    expect(payload.symbols.length).toBeGreaterThan(0);
+    expect(payload.symbols[0]).toMatchObject({
+      code: expect.any(String),
+      currency: expect.any(String),
+      id: expect.any(String),
+      name: expect.any(String),
+      region: expect.any(String),
+    });
   });
 
   it("returns the current holdings payload", async () => {
