@@ -155,7 +155,7 @@ export function ScreeningPage() {
 
             <div className="flex min-h-12 items-center rounded-md border border-zinc-200 bg-white px-4 sm:self-end">
               <p className="text-sm font-medium text-zinc-700">
-                表示 <span className="text-zinc-950">{visibleCandidates.length}</span> 件
+                表示 <span className="text-zinc-950">{formatInteger(visibleCandidates.length)}</span> 件
               </p>
             </div>
           </div>
@@ -416,7 +416,6 @@ function formatCompactNumber(value: number | null): string {
 
   return new Intl.NumberFormat("ja-JP", {
     maximumFractionDigits: 1,
-    notation: "compact",
   }).format(value);
 }
 
@@ -428,7 +427,12 @@ function formatJpyCompactNumber(value: number | null): string {
   return new Intl.NumberFormat("ja-JP", {
     currency: "JPY",
     maximumFractionDigits: 1,
-    notation: "compact",
     style: "currency",
+  }).format(value);
+}
+
+function formatInteger(value: number): string {
+  return new Intl.NumberFormat("ja-JP", {
+    maximumFractionDigits: 0,
   }).format(value);
 }

@@ -194,7 +194,7 @@ export function AdminImportPage() {
           label="最新 generatedAt"
           value={payload.generatedAt ? formatTimestamp(payload.generatedAt) : "未取り込み"}
         />
-        <InfoCard label="最新 job 件数" value={`${payload.jobs.length}件`} />
+        <InfoCard label="最新 job 件数" value={formatCount(payload.jobs.length)} />
       </div>
 
       {loadError ? (
@@ -264,11 +264,11 @@ export function AdminImportPage() {
                   <JobMetric label="最新 file" value={latestJob?.fileName ?? "未実行"} />
                   <JobMetric
                     label="銘柄数"
-                    value={latestJob ? `${latestJob.symbolCount}件` : "未実行"}
+                    value={latestJob ? formatCount(latestJob.symbolCount) : "未実行"}
                   />
                   <JobMetric
                     label="価格数"
-                    value={latestJob ? `${latestJob.dailyPriceCount}件` : "未実行"}
+                    value={latestJob ? formatCount(latestJob.dailyPriceCount) : "未実行"}
                   />
                 </div>
 
@@ -441,6 +441,10 @@ function formatTimestamp(value: string): string {
     month: "2-digit",
     day: "2-digit",
   });
+}
+
+function formatCount(value: number): string {
+  return `${new Intl.NumberFormat("ja-JP").format(value)}件`;
 }
 
 function describeUploadPhase(phase?: UploadPhase): string {
