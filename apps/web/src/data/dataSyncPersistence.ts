@@ -1,4 +1,10 @@
-import type { HoldingsPayload, MarketDataPayload, SyncStateId } from "@stock-prep/shared";
+import type {
+  HoldingsPayload,
+  LatestSummaryPayload,
+  MarketDataPayload,
+  StoredStockSymbol,
+  SyncStateId,
+} from "@stock-prep/shared";
 
 import { createStockPrepDbRepository, openStockPrepDb } from "../storage/stockPrepDb";
 
@@ -27,6 +33,40 @@ export async function persistMarketDataPayload(payload: MarketDataPayload): Prom
     await repository.putSyncState({
       datasetVersion: payload.datasetVersion,
       id: "market-data",
+      syncedAt: new Date().toISOString(),
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function persistLatestSummaryPayload(payload: LatestSummaryPayload): Promise<void> {
+  const db = await openStockPrepDb();
+
+  try {
+    const repository = createStockPrepDbRepository(db);
+    const existingSymbols = await repository.listSymbols();
+    const existingById = new Map(existingSymbols.map((symbol) => [symbol.id, symbol] as const));
+    const nextSymbols: StoredStockSymbol[] = payload.symbols.map((symbol) => {
+      const existing = existingById.get(symbol.id);
+
+      return {
+        code: symbol.code,
+        currency: symbol.currency,
+        id: symbol.id,
+        name: symbol.name,
+        region: symbol.region,
+        securityType: symbol.securityType,
+        source: existing?.source ?? "stooq",
+        sourceSymbol: symbol.sourceSymbol,
+        unsupportedReason: existing?.unsupportedReason,
+      };
+    });
+
+    await repository.replaceSymbolsSnapshot(nextSymbols);
+    await repository.putSyncState({
+      datasetVersion: payload.datasetVersion,
+      id: "latest-summary",
       syncedAt: new Date().toISOString(),
     });
   } finally {

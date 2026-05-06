@@ -1,6 +1,6 @@
 import type { HoldingsPayload, MarketDataPayload } from "./portfolio.js";
 
-export type SyncStateId = "holdings" | "market-data";
+export type SyncStateId = "holdings" | "latest-summary" | "market-data";
 
 export type StoredSyncState = {
   datasetVersion: string;
