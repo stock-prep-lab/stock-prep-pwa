@@ -37,10 +37,6 @@ describe("stockPrepImport", () => {
         "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
         "1306.JP,D,20260418,000000,2900,2920,2890,2910,1200000,0",
       ].join("\n"),
-      "data/daily/uk/lse stocks intl/0A0A.uk.txt": [
-        "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
-        "0A0A.UK,D,20260418,000000,1,1,1,1,1,0",
-      ].join("\n"),
     });
 
     const currentMarketData: MarketDataPayload = {
@@ -83,9 +79,9 @@ describe("stockPrepImport", () => {
         "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
         "JPYUSD,D,20260418,000000,0.0065,0.0065,0.0065,0.0065,0,0",
       ].join("\n"),
-      "data/daily/world/currencies/major/jpygbp.txt": [
+      "data/daily/world/currencies/major/jpyhkd.txt": [
         "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
-        "JPYGBP,D,20260418,000000,0.0051,0.0051,0.0051,0.005,0,0",
+        "JPYHKD,D,20260418,000000,0.1282,0.1282,0.1282,0.128,0,0",
       ].join("\n"),
     });
 
@@ -99,8 +95,8 @@ describe("stockPrepImport", () => {
     expect(result.summary.exchangeRateCount).toBe(2);
     expect(result.marketData.exchangeRates).toEqual([
       expect.objectContaining({
-        close: 200,
-        pair: "GBPJPY",
+        close: 7.8125,
+        pair: "HKDJPY",
       }),
       expect.objectContaining({
         close: 153.846154,

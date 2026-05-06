@@ -19,7 +19,6 @@ describe("stooqBulk", () => {
     ).toEqual([
       "https://stooq.com/db/d/?b=d_jp_txt",
       "https://stooq.com/db/d/?b=d_us_txt",
-      "https://stooq.com/db/d/?b=d_uk_txt",
       "https://stooq.com/db/d/?b=d_hk_txt",
       "https://stooq.com/db/d/?b=d_world_txt",
     ]);
@@ -93,10 +92,6 @@ describe("stooqBulk", () => {
           path: "data/daily/hk/hkex reits/0823.hk.txt",
         },
         {
-          content: "2026-04-17,101,102,100,101.5,5000",
-          path: "data/daily/uk/lse stocks intl/abcd.uk.txt",
-        },
-        {
           content: "2026-04-17,110,112,109,111,440000",
           path: "data/daily/us/nyse bonds/test.us.txt",
         },
@@ -150,6 +145,10 @@ describe("stooqBulk", () => {
           content: "bad,row",
           path: "data/daily/us/nasdaq stocks/aapl.us.txt",
         },
+        {
+          content: "2026-04-17,1200,1210,1190,1205,920000",
+          path: "data/daily/hk/hkex reits/0823.hk.txt",
+        },
       ],
       targets: [
         createTarget(),
@@ -166,16 +165,29 @@ describe("stooqBulk", () => {
           sourceSymbol: "aapl.us",
         }),
         createTarget({
-          code: "HSBA",
-          currency: "GBP",
-          name: "HSBC Holdings",
-          region: "UK",
-          sourceSymbol: "hsba.uk",
+          code: "0823",
+          currency: "HKD",
+          instrumentType: "reit",
+          name: "Link REIT",
+          region: "HK",
+          sourceSymbol: "0823.hk",
         }),
       ],
     });
 
     expect(result.symbols).toEqual([
+      {
+        code: "0823",
+        currency: "HKD",
+        id: "hk-0823",
+        importStatus: "unsupported",
+        instrumentType: "reit",
+        lastImportError: "Hong Kong REIT products are outside the MVP universe.",
+        name: "Link REIT",
+        region: "HK",
+        source: "stooq",
+        sourceSymbol: "0823.hk",
+      },
       {
         code: "7203",
         currency: "JPY",
@@ -209,17 +221,6 @@ describe("stooqBulk", () => {
         region: "US",
         source: "stooq",
         sourceSymbol: "aapl.us",
-      },
-      {
-        code: "HSBA",
-        currency: "GBP",
-        id: "uk-hsba",
-        importStatus: "unsupported",
-        instrumentType: "stock",
-        name: "HSBC Holdings",
-        region: "UK",
-        source: "stooq",
-        sourceSymbol: "hsba.uk",
       },
     ]);
     expect(result.failures).toEqual([

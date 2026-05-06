@@ -7,11 +7,11 @@
 ## 日次更新フロー
 
 1. 管理者が Stooq から市場別 bulk ZIP をダウンロードする
-2. 管理画面から日本 / 米国 / 英国 / 香港 / world(為替) の対象 ZIP をアップロードする
+2. 管理画面から日本 / 米国 / 香港 / world(為替) の対象 ZIP をアップロードする
 3. 管理画面は raw ZIP を Cloudflare R2 に保存し、Supabase に `import_jobs` を `queued` で作成する
 4. Mac `launchd` worker が `queued` job を取得し、R2 から raw ZIP を読む
 5. worker が ZIP を展開し、対象カテゴリ配下を再帰的に走査して daily ASCII `.txt` を収集する
-6. MVP では株式 / ETF / 為替を保存対象にし、`lse stocks intl` と `hkex reits` は取り込み対象から外す
+6. MVP では株式 / ETF / 為替を保存対象にし、`hkex reits` は取り込み対象から外す
 7. 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリを除外する
 8. `world/currencies` から JPY 換算に必要な為替ペアを抽出する
 9. `stooqCategory` と、フォルダ名で安全に判定できる範囲の正規化済み `securityType`、市場、通貨、`sourceSymbol` を付与する

@@ -72,7 +72,7 @@ Vercel Project の Environment Variables に、少なくとも以下を設定す
 
 1. 管理者が Stooq から市場別 bulk ZIP を手動取得する
 2. Vercel 上の `/admin/imports` を開く
-3. 日本 / 米国 / 英国 / 香港 / world(為替) の対象 ZIP をアップロードする
+3. 日本 / 米国 / 香港 / world(為替) の対象 ZIP をアップロードする
 4. Vercel Functions が raw ZIP の保存先払い出しと `import_jobs` 作成を行う
 5. Mac `launchd` worker が `queued` job を拾って処理する
 

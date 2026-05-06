@@ -35,7 +35,6 @@ export function AdminImportPage() {
     FX: initialUploadState(),
     HK: initialUploadState(),
     JP: initialUploadState(),
-    UK: initialUploadState(),
     US: initialUploadState(),
   });
 
@@ -176,7 +175,7 @@ export function AdminImportPage() {
               手動 bulk 取り込み
             </h1>
             <p className="max-w-3xl text-base leading-7 text-zinc-700">
-              日本 / 米国 / 英国 / 香港 / world(為替) の ZIP を市場別に取り込みます。 ブラウザから
+              日本 / 米国 / 香港 / world(為替) の ZIP を市場別に取り込みます。 ブラウザから
               R2 へ直接アップロードし、その後 Vercel が queue を作成します。
             </p>
           </div>

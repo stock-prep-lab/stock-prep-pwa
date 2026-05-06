@@ -63,25 +63,19 @@ export type ImportedSymbolSnapshot = StoredStockSymbol & {
   stooqCategory: string | null;
 };
 
-const scopeRegionMap: Record<SupportedRegion, StoredStockSymbol["region"]> = {
+const scopeRegionMap: Record<SupportedRegion, SupportedRegion> = {
   HK: "HK",
   JP: "JP",
-  UK: "UK",
   US: "US",
 };
 
-const regionCurrencyMap: Record<StoredStockSymbol["region"], CurrencyCode> = {
+const regionCurrencyMap: Record<SupportedRegion, CurrencyCode> = {
   HK: "HKD",
   JP: "JPY",
-  UK: "GBP",
   US: "USD",
 };
 
 const fxSourceMap = {
-  jpygbp: {
-    baseCurrency: "GBP",
-    pair: "GBPJPY",
-  },
   jpyhkd: {
     baseCurrency: "HKD",
     pair: "HKDJPY",
@@ -308,12 +302,14 @@ function inferTargetsFromBulkPaths(
     }
 
     categoryBySourceSymbol.set(sourceSymbol, rule.pathFragment);
+    const region = scopeRegionMap[scopeId];
+
     targetsBySourceSymbol.set(sourceSymbol, {
       code: rawCode.toUpperCase(),
-      currency: regionCurrencyMap[rule.region],
+      currency: regionCurrencyMap[region],
       instrumentType: securityType === "stock" ? "stock" : "etf",
       name: rawCode.toUpperCase(),
-      region: rule.region,
+      region,
       sourceSymbol,
     });
   }

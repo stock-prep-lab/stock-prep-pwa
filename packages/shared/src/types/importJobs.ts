@@ -1,4 +1,4 @@
-export type ImportScopeId = "FX" | "HK" | "JP" | "UK" | "US";
+export type ImportScopeId = "FX" | "HK" | "JP" | "US";
 
 export type ImportJobStatus = "completed" | "failed" | "processing" | "queued";
 

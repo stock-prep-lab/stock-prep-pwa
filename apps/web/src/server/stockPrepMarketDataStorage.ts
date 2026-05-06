@@ -11,7 +11,7 @@ import { mapWithConcurrency } from "./asyncConcurrency.js";
 
 const defaultDailyPriceChunkSize = 20_000;
 const defaultLoadChunkConcurrency = 4;
-const scopeOrder = ["JP", "US", "UK", "HK", "FX"] as const satisfies readonly ImportScopeId[];
+const scopeOrder = ["JP", "US", "HK", "FX"] as const satisfies readonly ImportScopeId[];
 
 type ScopeArtifactReference = {
   latestSummaryKey: string;
@@ -439,7 +439,7 @@ function createScopeStoragePlan({
 function inferScopeIdFromSymbolId(symbolId: string): ImportScopeId | null {
   const prefix = symbolId.split("-")[0]?.toUpperCase();
 
-  if (prefix === "JP" || prefix === "US" || prefix === "UK" || prefix === "HK") {
+  if (prefix === "JP" || prefix === "US" || prefix === "HK") {
     return prefix;
   }
 

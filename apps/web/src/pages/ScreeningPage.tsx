@@ -394,7 +394,6 @@ function toRegionLabel(region: RankedScreeningCandidate["symbol"]["region"]): st
   const labels = {
     HK: "香港",
     JP: "日本",
-    UK: "英国",
     US: "米国",
   } as const;
 

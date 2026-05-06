@@ -13,9 +13,9 @@
 - レスポンシブ対応だけでは PWA 対応とみなさない
 - PWA としての Manifest / Service Worker / installable 対応は、主要画面の本物データ化後の Slice 24 で扱う
 - 外部日足データは Stooq daily ASCII bulk を使い、管理者が手動取得した ZIP を取り込む前提で扱う
-- 日本株に加えて、米国株、英国株、香港株の日足も同じ取り込み設計に含める
+- 日本株に加えて、米国株と香港株の日足を同じ取り込み設計に含める
 - 株式と ETF を MVP の投資対象に含め、REIT は将来拡張まで保留する
-- 米国株、英国株、香港株を JPY 建てポートフォリオで評価するため、為替日次も取り込み対象に含める
+- 米国株と香港株を JPY 建てポートフォリオで評価するため、為替日次も取り込み対象に含める
 - 保有登録 / 編集画面は必要とし、静的 UI は Slice 6、IndexedDB キャッシュは Slice 9 以降、サーバー同期は Slice 16 以降で扱う
 - MVP インフラは Vercel Hobby + Supabase Free + Cloudflare R2 Free を第一候補とし、DB 容量や利用量に応じて Neon Postgres や有料プランを検討する
 - ホーム / 検索 / 銘柄詳細 / スクリーニングに残る静的モックは、手動 bulk 取り込み、R2 / Supabase 配信、最新データ API の境界ができた後に順番に回収する
@@ -292,11 +292,10 @@
 ### 対象
 - 日次価格データ取り込み
 - 市場別 symbol suffix
-- 日本株 / 米国株 / 英国株 / 香港株の取得対象定義
+- 日本株 / 米国株 / 香港株の取得対象定義
 - 株式 / ETF / 為替の商品種別を扱える前提
 - 為替ペア取得対象定義
   - `USDJPY`
-  - `GBPJPY`
   - `HKDJPY`
 - ローカル保存更新
 - 起動時同期導線
@@ -368,7 +367,7 @@
 ### 完了条件
 - ポートフォリオとリバランス提案が本物データで動く
 - 保有登録 / 編集した内容がポートフォリオに反映される
-- 米国株 / 英国株 / 香港株の評価額を JPY 換算できる
+- 米国株 / 香港株の評価額を JPY 換算できる
 - 為替レート不足時に評価不能状態を扱える
 
 ### テスト / 確認観点
@@ -446,7 +445,7 @@
 ### 対象
 - Stooq daily ASCII bulk data の ZIP 入力前提整理
 - bulk `.txt` parser
-- 日本 / 米国 / 英国 / 香港 / 為替の取り込み単位整理
+- 日本 / 米国 / 香港 / 為替の取り込み単位整理
 - 株式 / ETF / 為替のみを保存対象にするフィルタ
 - 先物 / オプション / 債券 / 指数 / 暗号資産 / 派生的な商品カテゴリの除外
 - 空の価格ファイルを価格データなし状態として扱う処理
@@ -522,7 +521,7 @@
 - 市場別 ZIP 配下の対象カテゴリを再帰的に走査して `.txt` を収集する前提整理
 - `stocks` / `etfs` / `currencies` を保存対象カテゴリにする前提整理
 - フォルダ名から `stooqCategory` を保持し、アプリ内の `securityType` へ正規化する方針整理
-- `lse stocks intl` と `hkex reits` を MVP の取り込み対象外にする方針整理
+- `hkex reits` を MVP の取り込み対象外にする方針整理
 - 実 ZIP fixture で確認したい観点の整理
 
 ### 非対象
@@ -532,11 +531,11 @@
 - 画面モックの回収
 
 ### 完了条件
-- MVP で扱う入力 ZIP が 5 系統で明記されている
+- MVP で扱う入力 ZIP が 4 系統で明記されている
 - 対象カテゴリ配下を再帰走査して `.txt` を拾う前提が明記されている
 - `stooqCategory` と `securityType` を分けて保持する理由が明記されている
-- `lse stocks intl` と `hkex reits` を MVP の取り込み対象外にすることが明記されている
-- 日本 / 米国 / 英国 / 香港 / world の fixture で追加確認する観点が明記されている
+- `hkex reits` を MVP の取り込み対象外にすることが明記されている
+- 日本 / 米国 / 香港 / world の fixture で追加確認する観点が明記されている
 
 ### テスト / 確認観点
 - docs-only の場合は文書レビュー観点を PR に記載
@@ -547,10 +546,10 @@
 
 ### 対象
 - 管理画面の ZIP アップロード導線
-- 市場選択、日本 / 米国 / 英国 / 香港 / world(為替) ごとの ZIP 入力 UI
+- 市場選択、日本 / 米国 / 香港 / world(為替) ごとの ZIP 入力 UI
 - アップロード後に import job 状態を確認する管理 UI
 - 手動 bulk ZIP アップロード処理
-- 日本 / 米国 / 英国 / 香港 / world(為替) の市場別 import job
+- 日本 / 米国 / 香港 / world(為替) の市場別 import job
 - ZIP 受け取りからサーバー保存までの実行境界
 - 対象カテゴリ配下の再帰走査による `.txt` 収集
 - `stooqCategory` から `securityType` への正規化
@@ -708,7 +707,7 @@
 - Cloud Run / GitHub Actions など別 runner への移植
 
 ### 完了条件
-- R2 の current artifact が scope 単位で分離され、JP 再取り込み時に US / UK / HK / FX を巻き込まずに更新できる
+- R2 の current artifact が scope 単位で分離され、JP 再取り込み時に US / HK / FX を巻き込まずに更新できる
 - 再取り込み時の cleanup が対象 scope に閉じている
 - full historical は scope ごとの chunk 保存を維持しつつ、各 scope の対応表 JSON から必要な chunk へ到達できる
 - full historical の参照経路が、後続 Slice 19 で scope 内全 chunk 総なめ前提にならない形に整理されている
