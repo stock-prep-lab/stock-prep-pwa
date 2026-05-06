@@ -37,22 +37,24 @@ describe("searchCatalog", () => {
       ],
     });
 
-    expect(items).toEqual([
-      expect.objectContaining({
-        code: "0823",
-        marketLabel: "香港",
-        securityTypeLabel: "ETF",
-        status: "unsupported",
-        statusReason: "MVP では香港 ETF をまだ扱いません。",
-      }),
-      expect.objectContaining({
-        code: "7203",
-        lastClose: 3218,
-        marketLabel: "日本",
-        securityTypeLabel: "株式",
-        status: "ready",
-      }),
-    ]);
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "0823",
+          marketLabel: "香港",
+          securityTypeLabel: "ETF",
+          status: "unsupported",
+          statusReason: "MVP では香港 ETF をまだ扱いません。",
+        }),
+        expect.objectContaining({
+          code: "7203",
+          lastClose: 3218,
+          marketLabel: "日本",
+          securityTypeLabel: "株式",
+          status: "ready",
+        }),
+      ]),
+    );
   });
 
   it("marks symbols without latest close as unavailable", () => {
@@ -76,6 +78,28 @@ describe("searchCatalog", () => {
       statusLabel: "取得失敗",
       statusReason: "終値未取得",
     });
+  });
+
+  it("builds results from latest summary even when IndexedDB symbols are empty", () => {
+    const items = buildSearchCatalog({
+      latestSummary: createLatestSummary(),
+      symbols: [],
+    });
+
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "7203",
+          name: "トヨタ自動車",
+          status: "ready",
+        }),
+        expect.objectContaining({
+          code: "TSLA",
+          name: "Tesla",
+          status: "ready",
+        }),
+      ]),
+    );
   });
 
   it("filters by query and market while preferring exact code matches", () => {

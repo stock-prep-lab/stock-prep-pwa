@@ -63,11 +63,15 @@ export function buildSearchCatalog({
   latestSummary: LatestSummaryPayload | null;
   symbols: StoredStockSymbol[];
 }): SearchCatalogItem[] {
+  const resolvedSymbols = mergeSearchSymbols({
+    latestSummary,
+    symbols,
+  });
   const latestBySymbolId = new Map(
     (latestSummary?.symbols ?? []).map((symbol) => [symbol.id, symbol] as const),
   );
 
-  return symbols
+  return resolvedSymbols
     .flatMap((symbol) => {
       const securityType = normalizeSecurityType(symbol);
 
@@ -136,6 +140,46 @@ export function formatRegionLabel(region: RegionCode): string {
   }
 
   return "香港";
+}
+
+function mergeSearchSymbols({
+  latestSummary,
+  symbols,
+}: {
+  latestSummary: LatestSummaryPayload | null;
+  symbols: StoredStockSymbol[];
+}): StoredStockSymbol[] {
+  const merged = new Map(symbols.map((symbol) => [symbol.id, symbol] as const));
+
+  for (const summarySymbol of latestSummary?.symbols ?? []) {
+    const existing = merged.get(summarySymbol.id);
+
+    if (existing) {
+      merged.set(summarySymbol.id, {
+        ...existing,
+        code: summarySymbol.code,
+        currency: summarySymbol.currency,
+        name: summarySymbol.name,
+        region: summarySymbol.region,
+        securityType: summarySymbol.securityType,
+        sourceSymbol: summarySymbol.sourceSymbol,
+      });
+      continue;
+    }
+
+    merged.set(summarySymbol.id, {
+      code: summarySymbol.code,
+      currency: summarySymbol.currency,
+      id: summarySymbol.id,
+      name: summarySymbol.name,
+      region: summarySymbol.region,
+      securityType: summarySymbol.securityType,
+      source: "stooq",
+      sourceSymbol: summarySymbol.sourceSymbol,
+    });
+  }
+
+  return [...merged.values()];
 }
 
 function normalizeSecurityType(
