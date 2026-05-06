@@ -334,31 +334,44 @@ export function AdminImportPage() {
               <table className="min-w-full border-collapse text-sm">
                 <thead className="bg-zinc-50 text-left text-zinc-600">
                   <tr>
-                    <th className="px-4 py-3 font-medium">市場</th>
-                    <th className="px-4 py-3 font-medium">状態</th>
-                    <th className="px-4 py-3 font-medium">ファイル</th>
-                    <th className="px-4 py-3 font-medium">開始</th>
-                    <th className="px-4 py-3 font-medium">終了</th>
-                    <th className="px-4 py-3 font-medium">dataset</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">市場</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">状態</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">ファイル</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">開始</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">終了</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">dataset version</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">エラー</th>
                   </tr>
                 </thead>
                 <tbody>
                   {payload.jobs.map((job) => (
                     <tr className="border-t border-zinc-100" key={job.id}>
-                      <td className="px-4 py-3 text-zinc-800">{job.scopeId}</td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-800">
+                        {job.scopeId}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 align-top">
                         <StatusPill status={job.status} />
                       </td>
-                      <td className="px-4 py-3 text-zinc-700">{job.fileName}</td>
-                      <td className="px-4 py-3 text-zinc-700">{formatTimestamp(job.startedAt)}</td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-700">
+                        {job.fileName}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-700">
+                        {formatTimestamp(job.startedAt)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-700">
                         {job.finishedAt ? formatTimestamp(job.finishedAt) : "-"}
                       </td>
-                      <td className="px-4 py-3 text-zinc-700">
+                      <td className="whitespace-nowrap px-4 py-3 align-top text-zinc-700">
                         {job.datasetVersion ?? "-"}
+                      </td>
+                      <td className="min-w-80 max-w-xl px-4 py-3 align-top text-zinc-700">
                         {job.errorMessage ? (
-                          <p className="mt-1 text-xs text-rose-700">{job.errorMessage}</p>
-                        ) : null}
+                          <p className="break-all text-xs leading-5 text-rose-700">
+                            {job.errorMessage}
+                          </p>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -412,7 +425,13 @@ function StatusPill({ status }: { status?: ImportJobRecord["status"] }) {
             ? "bg-rose-50 text-rose-700"
             : "bg-zinc-100 text-zinc-700";
 
-  return <span className={`rounded-md px-2 py-1 text-xs font-semibold ${className}`}>{label}</span>;
+  return (
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold ${className}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 function formatTimestamp(value: string): string {
