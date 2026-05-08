@@ -211,9 +211,9 @@ export function SearchPage() {
               <div className="overflow-hidden rounded-md border border-zinc-200 bg-white">
                 <div className="hidden grid-cols-[minmax(0,1.4fr)_5rem_5rem_5rem_7rem_6rem] border-b border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-600 md:grid">
                   <span>銘柄</span>
-                  <span className="whitespace-nowrap text-center">市場</span>
-                  <span className="whitespace-nowrap text-center">通貨</span>
-                  <span className="whitespace-nowrap text-center">種別</span>
+                  <span className="whitespace-nowrap text-left">市場</span>
+                  <span className="whitespace-nowrap text-left">通貨</span>
+                  <span className="whitespace-nowrap text-left">種別</span>
                   <span className="whitespace-nowrap text-right">終値</span>
                   <span className="whitespace-nowrap text-center">状態</span>
                 </div>
@@ -246,13 +246,13 @@ export function SearchPage() {
                         ) : null}
                       </div>
 
-                      <p className="hidden text-center text-sm text-zinc-700 md:block">
+                      <p className="hidden text-left text-sm text-zinc-700 md:block">
                         {item.marketLabel}
                       </p>
-                      <p className="hidden text-center text-sm text-zinc-700 md:block">
+                      <p className="hidden text-left text-sm text-zinc-700 md:block">
                         {item.currency}
                       </p>
-                      <p className="hidden text-center text-sm text-zinc-700 md:block">
+                      <p className="hidden text-left text-sm text-zinc-700 md:block">
                         {item.securityTypeLabel}
                       </p>
                       <p className="text-sm font-semibold text-zinc-950 md:text-right">
