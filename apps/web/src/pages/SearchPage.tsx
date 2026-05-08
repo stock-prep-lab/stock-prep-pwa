@@ -209,19 +209,18 @@ export function SearchPage() {
               />
             ) : (
               <div className="overflow-hidden rounded-md border border-zinc-200 bg-white">
-                <div className="hidden grid-cols-[minmax(0,1.4fr)_5rem_5rem_5rem_7rem_6rem] border-b border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-600 md:grid">
+                <div className="hidden grid-cols-[minmax(0,1.4fr)_5rem_5rem_5rem_7rem] border-b border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-600 md:grid">
                   <span>銘柄</span>
                   <span className="whitespace-nowrap text-left">市場</span>
                   <span className="whitespace-nowrap text-left">通貨</span>
                   <span className="whitespace-nowrap text-left">種別</span>
                   <span className="whitespace-nowrap text-right">終値</span>
-                  <span className="whitespace-nowrap text-center">状態</span>
                 </div>
 
                 <div className="divide-y divide-zinc-200">
                   {filteredItems.map((item) => (
                     <Link
-                      className="grid gap-3 p-4 text-zinc-950 transition hover:bg-zinc-50 md:grid-cols-[minmax(0,1.4fr)_5rem_5rem_5rem_7rem_6rem] md:items-center"
+                      className="grid gap-3 p-4 text-zinc-950 transition hover:bg-zinc-50 md:grid-cols-[minmax(0,1.4fr)_5rem_5rem_5rem_7rem] md:items-center"
                       key={item.id}
                       to={`/stocks/${item.code}?region=${item.region}`}
                     >
@@ -258,9 +257,6 @@ export function SearchPage() {
                       <p className="text-sm font-semibold text-zinc-950 md:text-right">
                         {formatLastClose(item)}
                       </p>
-                      <div className="md:flex md:justify-center">
-                        <StatusBadge item={item} />
-                      </div>
                     </Link>
                   ))}
                 </div>
@@ -315,23 +311,6 @@ function NoticePanel({
         : "border-zinc-200 bg-white text-zinc-700";
 
   return <div className={`rounded-md border px-4 py-3 text-sm leading-6 ${className}`}>{children}</div>;
-}
-
-function StatusBadge({ item }: { item: SearchCatalogItem }) {
-  const className =
-    item.status === "ready"
-      ? "bg-emerald-50 text-emerald-700"
-      : item.status === "unsupported"
-        ? "bg-amber-50 text-amber-700"
-        : "bg-rose-50 text-rose-700";
-
-  return (
-    <span
-      className={`inline-flex w-fit whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold ${className}`}
-    >
-      {item.statusLabel}
-    </span>
-  );
 }
 
 function formatLastClose(item: SearchCatalogItem): string {
