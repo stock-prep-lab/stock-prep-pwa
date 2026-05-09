@@ -60,7 +60,14 @@ describe("stockDetailData", () => {
     expect(detail.chartData.buyPrice?.[0]?.value).toBe(100);
     expect(detail.chartData.stopLoss?.[0]?.value).toBe(100 * defaultStopLossRatio);
     expect(detail.chartData.recentHigh?.at(-1)?.value).toBeGreaterThan(0);
-    expect(detail.trendSignals[0]?.label).toBe("25MA");
+    expect(detail.trendSignals.map((signal) => signal.label)).toEqual([
+      "25MA",
+      "75MA",
+      "RSI(14)",
+      "MACD(12,26,9)",
+      "ボリンジャー(20,±2σ)",
+    ]);
+    expect(detail.insightLines.length).toBeGreaterThan(0);
     expect(detail.priceMetrics[0]?.label).toBe("終値");
   });
 });

@@ -70,6 +70,22 @@ export type StockDetailChartData = {
   volume: StockDetailVolumePoint[];
 };
 
+type BollingerBandPoint = {
+  lower: number;
+  middle: number;
+  time: string;
+  upper: number;
+};
+
+type MacdPoint = {
+  histogram: number;
+  macd: number;
+  signal: number;
+  time: string;
+};
+
+type TrendContext = "downtrend" | "range" | "uptrend";
+
 export type StockDetailPageData = {
   chartData: StockDetailChartData;
   datasetVersion: string;
@@ -123,12 +139,26 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
   const week52Low = getMinValue(trailingHistory.map((bar) => bar.low));
   const ma25Values = calculateSimpleMovingAverage(history, 25);
   const ma75Values = calculateSimpleMovingAverage(history, 75);
+  const rsi14Values = calculateRsi(history, 14);
+  const bollinger20Values = calculateBollingerBands(history, 20, 2);
+  const macdValues = calculateMacd(history, 12, 26, 9);
   const ma25Latest = ma25Values.at(-1)?.value ?? null;
   const ma25Previous = ma25Values.at(-2)?.value ?? null;
   const ma75Latest = ma75Values.at(-1)?.value ?? null;
+  const rsi14Latest = rsi14Values.at(-1)?.value ?? null;
+  const rsi14Previous = rsi14Values.at(-2)?.value ?? null;
+  const latestBollinger = bollinger20Values.at(-1) ?? null;
+  const latestMacd = macdValues.at(-1) ?? null;
+  const previousMacd = macdValues.at(-2) ?? null;
   const recentHighValue = getMaxValue(trailingHistory.map((bar) => bar.high));
   const buyPrice = payload.holding?.averagePrice ?? null;
   const stopLossPrice = buyPrice ? roundToPriceTick(buyPrice * defaultStopLossRatio) : null;
+  const trendContext = resolveTrendContext({
+    currentClose,
+    ma25Latest,
+    ma25Previous,
+    ma75Latest,
+  });
   const chartData = buildChartData({
     buyPrice,
     history,
@@ -146,12 +176,18 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
     importStatusLabel: payload.importStatus === "ready" ? "終値取得済み" : "終値未取得",
     insightLines: buildInsightLines({
       buyPrice,
+      bollinger: latestBollinger,
       currency: payload.symbol.currency,
       currentClose,
+      latestMacd,
       ma25Latest,
+      previousMacd,
       priceChangeRate,
       recentHighValue,
+      rsi14Latest,
+      rsi14Previous,
       stopLossPrice,
+      trendContext,
     }),
     latestBar,
     marketLabel: regionLabelMap[payload.symbol.region],
@@ -242,19 +278,48 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
           ma75Latest !== null && currentClose !== null && currentClose >= ma75Latest ? "上回り" : "下回り",
       },
       {
-        description:
-          recentHighValue !== null && currentClose !== null
-            ? "直近高値にどれだけ近いかを見て、追いかけすぎを避けます。"
-            : "直近高値を計算できるだけの履歴がまだありません。",
-        label: "高値接近率",
-        tone:
-          recentHighValue !== null && currentClose !== null && currentClose / recentHighValue >= 0.95
-            ? "warning"
-            : "neutral",
-        value:
-          recentHighValue !== null && currentClose !== null
-            ? `${Math.round((currentClose / recentHighValue) * 100)}%`
-            : "-",
+        description: buildRsiDescription({
+          previousRsi: rsi14Previous,
+          rsi: rsi14Latest,
+          trendContext,
+        }),
+        label: "RSI(14)",
+        tone: resolveRsiTone({
+          previousRsi: rsi14Previous,
+          rsi: rsi14Latest,
+          trendContext,
+        }),
+        value: formatRsiValue(rsi14Latest),
+      },
+      {
+        description: buildMacdDescription({
+          latest: latestMacd,
+          previous: previousMacd,
+        }),
+        label: "MACD(12,26,9)",
+        tone: resolveMacdTone({
+          latest: latestMacd,
+          previous: previousMacd,
+        }),
+        value: formatMacdValue(latestMacd),
+      },
+      {
+        description: buildBollingerDescription({
+          bollinger: latestBollinger,
+          currentClose,
+          trendContext,
+        }),
+        label: "ボリンジャー(20,±2σ)",
+        tone: resolveBollingerTone({
+          bollinger: latestBollinger,
+          currentClose,
+          trendContext,
+        }),
+        value: formatBollingerValue({
+          bollinger: latestBollinger,
+          currentClose,
+          recentHighValue,
+        }),
       },
     ],
   };
@@ -304,20 +369,32 @@ function buildConstantLine(times: string[], value: number): StockDetailChartPoin
 
 function buildInsightLines({
   buyPrice,
+  bollinger,
   currency,
   currentClose,
+  latestMacd,
   ma25Latest,
+  previousMacd,
   priceChangeRate,
   recentHighValue,
+  rsi14Latest,
+  rsi14Previous,
   stopLossPrice,
+  trendContext,
 }: {
   buyPrice: number | null;
+  bollinger: BollingerBandPoint | null;
   currency: StockDetailPayload["symbol"]["currency"];
   currentClose: number | null;
+  latestMacd: MacdPoint | null;
   ma25Latest: number | null;
+  previousMacd: MacdPoint | null;
   priceChangeRate: number | null;
   recentHighValue: number | null;
+  rsi14Latest: number | null;
+  rsi14Previous: number | null;
   stopLossPrice: number | null;
+  trendContext: TrendContext;
 }): string[] {
   const lines: string[] = [];
 
@@ -336,6 +413,35 @@ function buildInsightLines({
     } else if (ratio >= 0.9) {
       lines.push("直近高値から大きく離れておらず、押し目候補として見やすい位置です。");
     }
+  }
+
+  const rsiLine = buildRsiInsightLine({
+    previousRsi: rsi14Previous,
+    rsi: rsi14Latest,
+    trendContext,
+  });
+
+  if (rsiLine !== null) {
+    lines.push(rsiLine);
+  }
+
+  const bollingerLine = buildBollingerInsightLine({
+    bollinger,
+    currentClose,
+    trendContext,
+  });
+
+  if (bollingerLine !== null) {
+    lines.push(bollingerLine);
+  }
+
+  const macdLine = buildMacdInsightLine({
+    latest: latestMacd,
+    previous: previousMacd,
+  });
+
+  if (macdLine !== null) {
+    lines.push(macdLine);
   }
 
   if (buyPrice !== null && stopLossPrice !== null && currentClose !== null) {
@@ -357,7 +463,7 @@ function buildInsightLines({
     );
   }
 
-  return lines.slice(0, 3);
+  return lines.slice(0, 5);
 }
 
 function calculateSimpleMovingAverage(
@@ -380,6 +486,162 @@ function calculateSimpleMovingAverage(
         value: roundToPriceTick(rollingSum / windowSize),
       });
     }
+  }
+
+  return values;
+}
+
+function calculateRsi(history: DailyPriceBar[], period: number): StockDetailChartPoint[] {
+  if (history.length <= period) {
+    return [];
+  }
+
+  let averageGain = 0;
+  let averageLoss = 0;
+
+  for (let index = 1; index <= period; index += 1) {
+    const diff = history[index]!.close - history[index - 1]!.close;
+    averageGain += diff > 0 ? diff : 0;
+    averageLoss += diff < 0 ? Math.abs(diff) : 0;
+  }
+
+  averageGain /= period;
+  averageLoss /= period;
+
+  const values: StockDetailChartPoint[] = [
+    {
+      time: history[period]!.date,
+      value: roundToPriceTick(resolveRsiValue(averageGain, averageLoss)),
+    },
+  ];
+
+  for (let index = period + 1; index < history.length; index += 1) {
+    const diff = history[index]!.close - history[index - 1]!.close;
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? Math.abs(diff) : 0;
+
+    averageGain = (averageGain * (period - 1) + gain) / period;
+    averageLoss = (averageLoss * (period - 1) + loss) / period;
+
+    values.push({
+      time: history[index]!.date,
+      value: roundToPriceTick(resolveRsiValue(averageGain, averageLoss)),
+    });
+  }
+
+  return values;
+}
+
+function resolveRsiValue(averageGain: number, averageLoss: number): number {
+  if (averageLoss === 0) {
+    return 100;
+  }
+
+  const relativeStrength = averageGain / averageLoss;
+  return 100 - 100 / (1 + relativeStrength);
+}
+
+function calculateBollingerBands(
+  history: DailyPriceBar[],
+  period: number,
+  standardDeviationMultiplier: number,
+): BollingerBandPoint[] {
+  const values: BollingerBandPoint[] = [];
+
+  for (let index = period - 1; index < history.length; index += 1) {
+    const window = history.slice(index - period + 1, index + 1);
+    const closes = window.map((bar) => bar.close);
+    const middle = closes.reduce((sum, close) => sum + close, 0) / closes.length;
+    const variance =
+      closes.reduce((sum, close) => sum + (close - middle) ** 2, 0) / closes.length;
+    const deviation = Math.sqrt(variance);
+
+    values.push({
+      lower: roundToPriceTick(middle - standardDeviationMultiplier * deviation),
+      middle: roundToPriceTick(middle),
+      time: history[index]!.date,
+      upper: roundToPriceTick(middle + standardDeviationMultiplier * deviation),
+    });
+  }
+
+  return values;
+}
+
+function calculateMacd(
+  history: DailyPriceBar[],
+  shortPeriod: number,
+  longPeriod: number,
+  signalPeriod: number,
+): MacdPoint[] {
+  const shortEma = calculateExponentialMovingAverage(history, shortPeriod);
+  const longEma = calculateExponentialMovingAverage(history, longPeriod);
+  const shortMap = new Map(shortEma.map((point) => [point.time, point.value]));
+
+  const macdBase = longEma.flatMap((point) => {
+    const shortValue = shortMap.get(point.time);
+
+    return shortValue === undefined
+      ? []
+      : [
+          {
+            time: point.time,
+            value: roundToPriceTick(shortValue - point.value),
+          },
+        ];
+  });
+
+  const signalSeries = calculateExponentialMovingAverageFromPoints(macdBase, signalPeriod);
+  const signalMap = new Map(signalSeries.map((point) => [point.time, point.value]));
+
+  return macdBase.flatMap((point) => {
+    const signal = signalMap.get(point.time);
+
+    return signal === undefined
+      ? []
+      : [
+          {
+            histogram: roundToPriceTick(point.value - signal),
+            macd: point.value,
+            signal,
+            time: point.time,
+          },
+        ];
+  });
+}
+
+function calculateExponentialMovingAverage(
+  history: DailyPriceBar[],
+  period: number,
+): StockDetailChartPoint[] {
+  return calculateExponentialMovingAverageFromPoints(
+    history.map((bar) => ({ time: bar.date, value: bar.close })),
+    period,
+  );
+}
+
+function calculateExponentialMovingAverageFromPoints(
+  points: StockDetailChartPoint[],
+  period: number,
+): StockDetailChartPoint[] {
+  if (points.length < period) {
+    return [];
+  }
+
+  const multiplier = 2 / (period + 1);
+  let ema = points.slice(0, period).reduce((sum, point) => sum + point.value, 0) / period;
+  const values: StockDetailChartPoint[] = [
+    {
+      time: points[period - 1]!.time,
+      value: roundToPriceTick(ema),
+    },
+  ];
+
+  for (let index = period; index < points.length; index += 1) {
+    ema = (points[index]!.value - ema) * multiplier + ema;
+    values.push({
+      time: points[index]!.time,
+      value: roundToPriceTick(ema),
+    });
   }
 
   return values;
@@ -421,6 +683,378 @@ function getMaxValue(values: number[]): number | null {
 
 function getMinValue(values: number[]): number | null {
   return values.length > 0 ? Math.min(...values) : null;
+}
+
+function resolveTrendContext({
+  currentClose,
+  ma25Latest,
+  ma25Previous,
+  ma75Latest,
+}: {
+  currentClose: number | null;
+  ma25Latest: number | null;
+  ma25Previous: number | null;
+  ma75Latest: number | null;
+}): TrendContext {
+  if (
+    currentClose !== null &&
+    ma25Latest !== null &&
+    ma25Previous !== null &&
+    ma75Latest !== null &&
+    currentClose >= ma25Latest &&
+    ma25Latest >= ma75Latest &&
+    ma25Latest > ma25Previous
+  ) {
+    return "uptrend";
+  }
+
+  if (
+    currentClose !== null &&
+    ma25Latest !== null &&
+    ma25Previous !== null &&
+    ma75Latest !== null &&
+    currentClose <= ma25Latest &&
+    ma25Latest <= ma75Latest &&
+    ma25Latest < ma25Previous
+  ) {
+    return "downtrend";
+  }
+
+  return "range";
+}
+
+function buildRsiDescription({
+  previousRsi,
+  rsi,
+  trendContext,
+}: {
+  previousRsi: number | null;
+  rsi: number | null;
+  trendContext: TrendContext;
+}): string {
+  if (rsi === null) {
+    return "14営業日分のデータがまだ足りず、RSI を計算できません。";
+  }
+
+  if (trendContext === "uptrend" && rsi >= 40 && rsi <= 50 && previousRsi !== null && rsi > previousRsi) {
+    return "上昇トレンド中に RSI が 40〜50 付近で反発していて、押し目候補として見やすい状態です。";
+  }
+
+  if (
+    trendContext === "downtrend" &&
+    rsi >= 50 &&
+    rsi <= 60 &&
+    previousRsi !== null &&
+    rsi < previousRsi
+  ) {
+    return "下落トレンド中に RSI が 50〜60 付近で跳ね返されていて、戻り売り候補として見やすい状態です。";
+  }
+
+  if (trendContext === "range") {
+    if (rsi <= 30) {
+      return "レンジ相場の下限寄りで、RSI 30 付近からの反発を確認したい場面です。";
+    }
+
+    if (rsi >= 70) {
+      return "レンジ相場の上限寄りで、RSI 70 付近からの失速を警戒したい場面です。";
+    }
+  }
+
+  return rsi >= 50 ? "RSI は 50 を上回り、上方向の勢いがやや優勢です。" : "RSI は 50 を下回り、勢いはまだ慎重に見たい状態です。";
+}
+
+function resolveRsiTone({
+  previousRsi,
+  rsi,
+  trendContext,
+}: {
+  previousRsi: number | null;
+  rsi: number | null;
+  trendContext: TrendContext;
+}): StockDetailTrendSignal["tone"] {
+  if (rsi === null) {
+    return "neutral";
+  }
+
+  if (trendContext === "uptrend" && rsi >= 40 && rsi <= 50 && previousRsi !== null && rsi > previousRsi) {
+    return "positive";
+  }
+
+  if (
+    trendContext === "downtrend" &&
+    rsi >= 50 &&
+    rsi <= 60 &&
+    previousRsi !== null &&
+    rsi < previousRsi
+  ) {
+    return "warning";
+  }
+
+  if (rsi >= 70) {
+    return "warning";
+  }
+
+  if (rsi <= 30) {
+    return "positive";
+  }
+
+  return "neutral";
+}
+
+function formatRsiValue(value: number | null): string {
+  return value !== null ? value.toFixed(1) : "-";
+}
+
+function buildMacdDescription({
+  latest,
+  previous,
+}: {
+  latest: MacdPoint | null;
+  previous: MacdPoint | null;
+}): string {
+  if (latest === null) {
+    return "MACD を計算できるだけの履歴がまだ足りません。";
+  }
+
+  const crossover =
+    previous !== null && previous.macd <= previous.signal && latest.macd > latest.signal
+      ? "MACD がシグナルを上抜け、買いシグナル候補です。"
+      : previous !== null && previous.macd >= previous.signal && latest.macd < latest.signal
+        ? "MACD がシグナルを下抜け、売りシグナル候補です。"
+        : latest.macd >= latest.signal
+          ? "MACD はシグナル線の上にあり、勢いは上向き寄りです。"
+          : "MACD はシグナル線の下にあり、勢いは慎重に見たい状態です。";
+
+  const baseline =
+    latest.macd >= 0
+      ? "0ラインの上で推移していて、上昇基調の見方を維持しやすいです。"
+      : "0ラインの下で推移していて、下落基調の見方が優勢です。";
+
+  const histogram =
+    previous !== null
+      ? Math.abs(latest.histogram) > Math.abs(previous.histogram)
+        ? "ヒストグラムは拡大していて、勢いが強まっています。"
+        : "ヒストグラムは縮小していて、勢いはやや落ち着いています。"
+      : "ヒストグラムの変化は次回更新を見て確認します。";
+
+  return `${crossover} ${baseline} ${histogram}`;
+}
+
+function resolveMacdTone({
+  latest,
+  previous,
+}: {
+  latest: MacdPoint | null;
+  previous: MacdPoint | null;
+}): StockDetailTrendSignal["tone"] {
+  if (latest === null) {
+    return "neutral";
+  }
+
+  if (previous !== null && previous.macd <= previous.signal && latest.macd > latest.signal) {
+    return "positive";
+  }
+
+  if (previous !== null && previous.macd >= previous.signal && latest.macd < latest.signal) {
+    return "warning";
+  }
+
+  return latest.macd >= 0 ? "positive" : "neutral";
+}
+
+function formatMacdValue(value: MacdPoint | null): string {
+  if (value === null) {
+    return "-";
+  }
+
+  return `${value.macd.toFixed(2)} / ${value.signal.toFixed(2)}`;
+}
+
+function buildBollingerDescription({
+  bollinger,
+  currentClose,
+  trendContext,
+}: {
+  bollinger: BollingerBandPoint | null;
+  currentClose: number | null;
+  trendContext: TrendContext;
+}): string {
+  if (bollinger === null || currentClose === null) {
+    return "ボリンジャーバンドを計算できるだけの履歴がまだ足りません。";
+  }
+
+  if (trendContext === "uptrend" && currentClose >= bollinger.upper * 0.99) {
+    return "上側バンドに沿って上昇していて、強い上昇トレンドのバンドウォークを意識したい状態です。";
+  }
+
+  if (trendContext === "downtrend" && currentClose <= bollinger.lower * 1.01) {
+    return "下側バンドに沿って下落していて、強い下落トレンドのバンドウォークを警戒したい状態です。";
+  }
+
+  if (trendContext === "range") {
+    if (currentClose >= bollinger.upper * 0.98) {
+      return "レンジ上限寄りで、上側バンド付近の行き過ぎ感を確認したい場面です。";
+    }
+
+    if (currentClose <= bollinger.lower * 1.02) {
+      return "レンジ下限寄りで、下側バンド付近からの反発余地を見たい場面です。";
+    }
+  }
+
+  return currentClose >= bollinger.middle
+    ? "中心線の上で推移していて、平均より強い位置を保っています。"
+    : "中心線の下で推移していて、平均回帰できるかを見たい状態です。";
+}
+
+function resolveBollingerTone({
+  bollinger,
+  currentClose,
+  trendContext,
+}: {
+  bollinger: BollingerBandPoint | null;
+  currentClose: number | null;
+  trendContext: TrendContext;
+}): StockDetailTrendSignal["tone"] {
+  if (bollinger === null || currentClose === null) {
+    return "neutral";
+  }
+
+  if (trendContext === "uptrend" && currentClose >= bollinger.upper * 0.99) {
+    return "positive";
+  }
+
+  if (trendContext === "downtrend" && currentClose <= bollinger.lower * 1.01) {
+    return "warning";
+  }
+
+  if (trendContext === "range" && currentClose >= bollinger.upper * 0.98) {
+    return "warning";
+  }
+
+  if (trendContext === "range" && currentClose <= bollinger.lower * 1.02) {
+    return "positive";
+  }
+
+  return "neutral";
+}
+
+function formatBollingerValue({
+  bollinger,
+  currentClose,
+  recentHighValue,
+}: {
+  bollinger: BollingerBandPoint | null;
+  currentClose: number | null;
+  recentHighValue: number | null;
+}): string {
+  if (bollinger === null || currentClose === null) {
+    return recentHighValue !== null && currentClose !== null
+      ? `${Math.round((currentClose / recentHighValue) * 100)}%`
+      : "-";
+  }
+
+  const upperDistance = ((bollinger.upper - currentClose) / currentClose) * 100;
+  const lowerDistance = ((currentClose - bollinger.lower) / currentClose) * 100;
+
+  return `上 +${upperDistance.toFixed(1)}% / 下 -${lowerDistance.toFixed(1)}%`;
+}
+
+function buildRsiInsightLine({
+  previousRsi,
+  rsi,
+  trendContext,
+}: {
+  previousRsi: number | null;
+  rsi: number | null;
+  trendContext: TrendContext;
+}): string | null {
+  if (rsi === null) {
+    return null;
+  }
+
+  if (trendContext === "uptrend" && rsi >= 40 && rsi <= 50 && previousRsi !== null && rsi > previousRsi) {
+    return "RSI(14) は 40〜50 付近から反発していて、上昇トレンド中の押し目候補として見やすいです。";
+  }
+
+  if (
+    trendContext === "downtrend" &&
+    rsi >= 50 &&
+    rsi <= 60 &&
+    previousRsi !== null &&
+    rsi < previousRsi
+  ) {
+    return "RSI(14) は 50〜60 付近で跳ね返されていて、下落トレンド中の戻り売り候補を意識したいです。";
+  }
+
+  if (trendContext === "range" && rsi <= 30) {
+    return "RSI(14) は 30 付近で、レンジ下限からの反発候補として見やすい位置です。";
+  }
+
+  if (trendContext === "range" && rsi >= 70) {
+    return "RSI(14) は 70 付近で、レンジ上限の行き過ぎを警戒したい位置です。";
+  }
+
+  return null;
+}
+
+function buildBollingerInsightLine({
+  bollinger,
+  currentClose,
+  trendContext,
+}: {
+  bollinger: BollingerBandPoint | null;
+  currentClose: number | null;
+  trendContext: TrendContext;
+}): string | null {
+  if (bollinger === null || currentClose === null) {
+    return null;
+  }
+
+  if (trendContext === "uptrend" && currentClose >= bollinger.upper * 0.99) {
+    return "ボリンジャーバンド上側に沿った上昇で、強いトレンド継続かどうかを見たい場面です。";
+  }
+
+  if (trendContext === "downtrend" && currentClose <= bollinger.lower * 1.01) {
+    return "ボリンジャーバンド下側に沿った下落で、弱い流れが続いていないかを警戒したいです。";
+  }
+
+  if (trendContext === "range" && currentClose >= bollinger.upper * 0.98) {
+    return "上側バンド付近で、レンジ相場なら高すぎ候補として一度落ち着きを見たい位置です。";
+  }
+
+  if (trendContext === "range" && currentClose <= bollinger.lower * 1.02) {
+    return "下側バンド付近で、レンジ相場なら安すぎ候補として反発確認を待ちたい位置です。";
+  }
+
+  return null;
+}
+
+function buildMacdInsightLine({
+  latest,
+  previous,
+}: {
+  latest: MacdPoint | null;
+  previous: MacdPoint | null;
+}): string | null {
+  if (latest === null || previous === null) {
+    return null;
+  }
+
+  if (previous.macd <= previous.signal && latest.macd > latest.signal) {
+    return "MACD がシグナル線を上抜けていて、勢いの改善を確認したい買いシグナル候補です。";
+  }
+
+  if (previous.macd >= previous.signal && latest.macd < latest.signal) {
+    return "MACD がシグナル線を下抜けていて、勢いの鈍化を警戒したい売りシグナル候補です。";
+  }
+
+  if (Math.abs(latest.histogram) > Math.abs(previous.histogram)) {
+    return latest.histogram > 0
+      ? "MACD ヒストグラムは拡大していて、上方向の勢いが強まっています。"
+      : "MACD ヒストグラムは拡大していて、下方向の勢いが強まっています。";
+  }
+
+  return "MACD ヒストグラムは縮小していて、直近の勢いは少し落ち着いています。";
 }
 
 function roundToPriceTick(value: number): number {
