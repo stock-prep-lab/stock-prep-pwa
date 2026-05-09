@@ -57,6 +57,9 @@ describe("stockDetailData", () => {
     expect(detail.chartData.candlesticks).toHaveLength(80);
     expect(detail.chartData.ma25).toHaveLength(56);
     expect(detail.chartData.ma75).toHaveLength(6);
+    expect(detail.chartData.bollingerUpper.length).toBeGreaterThan(0);
+    expect(detail.chartData.rsi.length).toBeGreaterThan(0);
+    expect(detail.chartData.macdLine.length).toBeGreaterThan(0);
     expect(detail.chartData.buyPrice?.[0]?.value).toBe(100);
     expect(detail.chartData.stopLoss?.[0]?.value).toBe(100 * defaultStopLossRatio);
     expect(detail.chartData.recentHigh?.at(-1)?.value).toBeGreaterThan(0);

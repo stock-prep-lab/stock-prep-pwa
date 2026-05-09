@@ -62,7 +62,7 @@ export function StockDetailChart({
           color: "#f4f4f5",
         },
       },
-      height: 360,
+      height: 520,
       layout: {
         background: {
           color: "#ffffff",
@@ -132,6 +132,31 @@ export function StockDetailChart({
       priceLineVisible: false,
       visible: visibility.ma75,
     });
+    const bollingerUpperSeries = chart.addSeries(LineSeries, {
+      color: "#6366f1",
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      lineWidth: 1,
+      priceLineVisible: false,
+      visible: visibility.bollinger,
+    });
+    const bollingerMiddleSeries = chart.addSeries(LineSeries, {
+      color: "#818cf8",
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      priceLineVisible: false,
+      visible: visibility.bollinger,
+    });
+    const bollingerLowerSeries = chart.addSeries(LineSeries, {
+      color: "#6366f1",
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      lineWidth: 1,
+      priceLineVisible: false,
+      visible: visibility.bollinger,
+    });
     const recentHighSeries = chart.addSeries(LineSeries, {
       color: "#52525b",
       crosshairMarkerVisible: false,
@@ -160,13 +185,150 @@ export function StockDetailChart({
       visible: visibility.stopLoss,
     });
 
+    let nextPaneIndex = 1;
+    let rsiPaneIndex: number | null = null;
+    let macdPaneIndex: number | null = null;
+
+    if (visibility.rsi) {
+      rsiPaneIndex = nextPaneIndex;
+      nextPaneIndex += 1;
+    }
+
+    if (visibility.macd) {
+      macdPaneIndex = nextPaneIndex;
+    }
+
+    const rsiSeries =
+      rsiPaneIndex !== null
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: "#9333ea",
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              lineWidth: 2,
+              priceLineVisible: false,
+            },
+            rsiPaneIndex,
+          )
+        : null;
+    const rsiUpperSeries =
+      rsiPaneIndex !== null
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: "#a1a1aa",
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              lineStyle: LineStyle.Dashed,
+              lineWidth: 1,
+              priceLineVisible: false,
+            },
+            rsiPaneIndex,
+          )
+        : null;
+    const rsiLowerSeries =
+      rsiPaneIndex !== null
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: "#a1a1aa",
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              lineStyle: LineStyle.Dashed,
+              lineWidth: 1,
+              priceLineVisible: false,
+            },
+            rsiPaneIndex,
+          )
+        : null;
+    const macdSeries =
+      macdPaneIndex !== null
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: "#2563eb",
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              lineWidth: 2,
+              priceLineVisible: false,
+            },
+            macdPaneIndex,
+          )
+        : null;
+    const macdSignalSeries =
+      macdPaneIndex !== null
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: "#f97316",
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              lineWidth: 2,
+              priceLineVisible: false,
+            },
+            macdPaneIndex,
+          )
+        : null;
+    const macdHistogramSeries =
+      macdPaneIndex !== null
+        ? chart.addSeries(
+            HistogramSeries,
+            {
+              priceLineVisible: false,
+            },
+            macdPaneIndex,
+          )
+        : null;
+
     candleSeries.setData(chartData.candlesticks);
     volumeSeries.setData(chartData.volume);
     ma25Series.setData(chartData.ma25);
     ma75Series.setData(chartData.ma75);
+    bollingerUpperSeries.setData(chartData.bollingerUpper);
+    bollingerMiddleSeries.setData(chartData.bollingerMiddle);
+    bollingerLowerSeries.setData(chartData.bollingerLower);
     recentHighSeries.setData(chartData.recentHigh ?? []);
     buyPriceSeries.setData(chartData.buyPrice ?? []);
     stopLossSeries.setData(chartData.stopLoss ?? []);
+
+    if (rsiSeries && rsiUpperSeries && rsiLowerSeries && rsiPaneIndex !== null) {
+      rsiSeries.setData(chartData.rsi);
+      rsiUpperSeries.setData(chartData.rsiUpperBand);
+      rsiLowerSeries.setData(chartData.rsiLowerBand);
+      chart.priceScale("right", rsiPaneIndex).applyOptions({
+        autoScale: true,
+        borderColor: "#d4d4d8",
+        scaleMargins: {
+          bottom: 0.1,
+          top: 0.1,
+        },
+      });
+    }
+
+    if (macdSeries && macdSignalSeries && macdHistogramSeries && macdPaneIndex !== null) {
+      macdSeries.setData(chartData.macdLine);
+      macdSignalSeries.setData(chartData.macdSignal);
+      macdHistogramSeries.setData(chartData.macdHistogram);
+      chart.priceScale("right", macdPaneIndex).applyOptions({
+        autoScale: true,
+        borderColor: "#d4d4d8",
+        scaleMargins: {
+          bottom: 0.15,
+          top: 0.15,
+        },
+      });
+    }
+
+    const panes = chart.panes();
+    panes[0]?.setStretchFactor(0.65);
+    if (rsiPaneIndex !== null) {
+      panes[rsiPaneIndex]?.setStretchFactor(macdPaneIndex !== null ? 0.18 : 0.25);
+    }
+    if (macdPaneIndex !== null) {
+      panes[macdPaneIndex]?.setStretchFactor(rsiPaneIndex !== null ? 0.17 : 0.25);
+    }
+
     chart.timeScale().fitContent();
 
     const resizeObserver = new ResizeObserver((entries) => {
@@ -176,7 +338,7 @@ export function StockDetailChart({
         return;
       }
 
-      chart.resize(entry.contentRect.width, 360);
+      chart.resize(entry.contentRect.width, 520);
     });
 
     resizeObserver.observe(container);
@@ -187,5 +349,5 @@ export function StockDetailChart({
     };
   }, [chartData, visibility]);
 
-  return <div className="min-h-80 w-full" ref={containerRef} />;
+  return <div className="min-h-[520px] w-full" ref={containerRef} />;
 }

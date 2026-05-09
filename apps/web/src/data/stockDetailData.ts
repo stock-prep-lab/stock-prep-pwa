@@ -13,18 +13,24 @@ import { fetchStockDetail } from "./syncApi";
 export const defaultStopLossRatio = 0.92;
 
 export type StockDetailChartVisibility = {
+  bollinger: boolean;
   buyPrice: boolean;
+  macd: boolean;
   ma25: boolean;
   ma75: boolean;
   recentHigh: boolean;
+  rsi: boolean;
   stopLoss: boolean;
 };
 
 export const defaultStockDetailChartVisibility: StockDetailChartVisibility = {
+  bollinger: false,
   buyPrice: true,
+  macd: false,
   ma25: true,
   ma75: true,
   recentHigh: false,
+  rsi: false,
   stopLoss: false,
 };
 
@@ -60,12 +66,27 @@ export type StockDetailVolumePoint = {
   value: number;
 };
 
+export type StockDetailHistogramPoint = {
+  color: string;
+  time: string;
+  value: number;
+};
+
 export type StockDetailChartData = {
+  bollingerLower: StockDetailChartPoint[];
+  bollingerMiddle: StockDetailChartPoint[];
+  bollingerUpper: StockDetailChartPoint[];
   buyPrice: StockDetailChartPoint[] | null;
   candlesticks: StockDetailCandlestickPoint[];
+  macdHistogram: StockDetailHistogramPoint[];
+  macdLine: StockDetailChartPoint[];
+  macdSignal: StockDetailChartPoint[];
   ma25: StockDetailChartPoint[];
   ma75: StockDetailChartPoint[];
   recentHigh: StockDetailChartPoint[] | null;
+  rsi: StockDetailChartPoint[];
+  rsiLowerBand: StockDetailChartPoint[];
+  rsiUpperBand: StockDetailChartPoint[];
   stopLoss: StockDetailChartPoint[] | null;
   volume: StockDetailVolumePoint[];
 };
@@ -160,11 +181,14 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
     ma75Latest,
   });
   const chartData = buildChartData({
+    bollingerValues: bollinger20Values,
     buyPrice,
     history,
+    macdValues,
     ma25Values,
     ma75Values,
     recentHighValue,
+    rsi14Values,
     stopLossPrice,
   });
 
@@ -326,23 +350,32 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
 }
 
 function buildChartData({
+  bollingerValues,
   buyPrice,
   history,
+  macdValues,
   ma25Values,
   ma75Values,
   recentHighValue,
+  rsi14Values,
   stopLossPrice,
 }: {
+  bollingerValues: BollingerBandPoint[];
   buyPrice: number | null;
   history: DailyPriceBar[];
+  macdValues: MacdPoint[];
   ma25Values: StockDetailChartPoint[];
   ma75Values: StockDetailChartPoint[];
   recentHighValue: number | null;
+  rsi14Values: StockDetailChartPoint[];
   stopLossPrice: number | null;
 }): StockDetailChartData {
   const times = history.map((bar) => bar.date);
 
   return {
+    bollingerLower: bollingerValues.map((point) => ({ time: point.time, value: point.lower })),
+    bollingerMiddle: bollingerValues.map((point) => ({ time: point.time, value: point.middle })),
+    bollingerUpper: bollingerValues.map((point) => ({ time: point.time, value: point.upper })),
     buyPrice: buyPrice !== null ? buildConstantLine(times, buyPrice) : null,
     candlesticks: history.map((bar) => ({
       close: bar.close,
@@ -351,9 +384,19 @@ function buildChartData({
       open: bar.open,
       time: bar.date,
     })),
+    macdHistogram: macdValues.map((point) => ({
+      color: point.histogram >= 0 ? "#0f766e" : "#d97706",
+      time: point.time,
+      value: point.histogram,
+    })),
+    macdLine: macdValues.map((point) => ({ time: point.time, value: point.macd })),
+    macdSignal: macdValues.map((point) => ({ time: point.time, value: point.signal })),
     ma25: ma25Values,
     ma75: ma75Values,
     recentHigh: recentHighValue !== null ? buildConstantLine(times, recentHighValue) : null,
+    rsi: rsi14Values,
+    rsiLowerBand: buildConstantLine(times, 30),
+    rsiUpperBand: buildConstantLine(times, 70),
     stopLoss: stopLossPrice !== null ? buildConstantLine(times, stopLossPrice) : null,
     volume: history.map((bar) => ({
       color: bar.close >= bar.open ? "#0f766e" : "#d97706",

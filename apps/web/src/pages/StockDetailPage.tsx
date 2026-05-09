@@ -26,6 +26,9 @@ const toggleItems: Array<{
 }> = [
   { id: "ma25", label: "25MA" },
   { id: "ma75", label: "75MA" },
+  { id: "bollinger", label: "ボリンジャー" },
+  { id: "rsi", label: "RSI(14)" },
+  { id: "macd", label: "MACD(12,26,9)" },
   { id: "recentHigh", label: "直近高値ライン" },
   { id: "buyPrice", label: "買値ライン" },
   { id: "stopLoss", label: "損切りライン" },
