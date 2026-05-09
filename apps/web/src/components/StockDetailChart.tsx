@@ -1,14 +1,41 @@
 import { useEffect, useRef } from "react";
 
 import {
+  type BusinessDay,
   CandlestickSeries,
   createChart,
   HistogramSeries,
   LineSeries,
   LineStyle,
+  type Time,
 } from "lightweight-charts";
 
 import type { StockDetailChartData, StockDetailChartVisibility } from "../data/stockDetailData";
+
+function isBusinessDay(value: Time): value is BusinessDay {
+  return typeof value === "object" && value !== null && "year" in value;
+}
+
+function toDate(value: Time): Date {
+  if (isBusinessDay(value)) {
+    return new Date(Date.UTC(value.year, value.month - 1, value.day));
+  }
+
+  if (typeof value === "number") {
+    return new Date(value * 1000);
+  }
+
+  return new Date(value);
+}
+
+function formatDetailDate(value: Time): string {
+  const date = toDate(value);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
 
 export function StockDetailChart({
   chartData,
@@ -44,6 +71,7 @@ export function StockDetailChart({
       },
       localization: {
         locale: "ja-JP",
+        timeFormatter: formatDetailDate,
       },
       rightPriceScale: {
         borderColor: "#d4d4d8",
