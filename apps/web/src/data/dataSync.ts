@@ -1,34 +1,40 @@
-import type { HoldingsPayload, MarketDataPayload } from "@stock-prep/shared";
+import type { HoldingsPayload, LatestSummaryPayload } from "@stock-prep/shared";
 
-import { fetchDatasetVersion, fetchHoldings, fetchMarketData } from "./syncApi";
+import { fetchDatasetVersion, fetchHoldings, fetchLatestSummary } from "./syncApi";
 import { notifyStockPrepDataChanged } from "./dataSyncEvents";
 import {
   persistHoldingsPayload,
-  persistMarketDataPayload,
+  persistLatestSummaryPayload,
   readLocalSyncVersion,
 } from "./dataSyncPersistence";
 
 export type DataSyncResult = {
   holdingsUpdated: boolean;
-  marketDataUpdated: boolean;
+  latestSummaryUpdated: boolean;
 };
 
 export async function syncStockPrepData(): Promise<DataSyncResult> {
-  const [localHoldingsVersion, localMarketDataVersion] = await Promise.all([
+  const [localHoldingsVersion, localLatestSummaryVersion] = await Promise.all([
     readLocalSyncVersion("holdings"),
-    readLocalSyncVersion("market-data"),
+    readLocalSyncVersion("latest-summary"),
   ]);
 
-  const datasetVersion = await fetchDatasetVersion(localMarketDataVersion);
-  let marketDataPayload: MarketDataPayload | null = null;
+  const datasetVersion = await fetchDatasetVersion(localLatestSummaryVersion, {
+    activity: "background",
+  });
+  let latestSummaryPayload: LatestSummaryPayload | null = null;
   let holdingsPayload: HoldingsPayload | null = null;
 
   if (datasetVersion.shouldSync) {
-    marketDataPayload = await fetchMarketData();
-    await persistMarketDataPayload(marketDataPayload);
+    latestSummaryPayload = await fetchLatestSummary({
+      activity: "background",
+    });
+    await persistLatestSummaryPayload(latestSummaryPayload);
   }
 
-  holdingsPayload = await fetchHoldings();
+  holdingsPayload = await fetchHoldings({
+    activity: "background",
+  });
 
   if (holdingsPayload.updatedAt !== localHoldingsVersion) {
     await persistHoldingsPayload(holdingsPayload);
@@ -38,10 +44,10 @@ export async function syncStockPrepData(): Promise<DataSyncResult> {
 
   const result = {
     holdingsUpdated: holdingsPayload !== null,
-    marketDataUpdated: marketDataPayload !== null,
+    latestSummaryUpdated: latestSummaryPayload !== null,
   };
 
-  if (result.holdingsUpdated || result.marketDataUpdated) {
+  if (result.holdingsUpdated || result.latestSummaryUpdated) {
     notifyStockPrepDataChanged();
   }
 

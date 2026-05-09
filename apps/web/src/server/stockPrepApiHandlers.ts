@@ -6,6 +6,7 @@ import type {
   ImportJobRecord,
   ImportJobsPayload,
   ImportUploadSessionPayload,
+  LatestSummaryPayload,
   MarketDataPayload,
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
@@ -22,6 +23,10 @@ export async function handleDatasetVersionRequest({
 
 export async function handleMarketDataRequest(): Promise<MarketDataPayload> {
   return getStockPrepServerBackend().getMarketDataPayload();
+}
+
+export async function handleLatestSummaryRequest(): Promise<LatestSummaryPayload> {
+  return getStockPrepServerBackend().getLatestSummaryPayload();
 }
 
 export async function handleGetHoldingsRequest(): Promise<HoldingsPayload> {

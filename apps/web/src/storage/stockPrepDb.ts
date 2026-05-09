@@ -54,6 +54,7 @@ export type StockPrepDbRepository = {
   putSymbol: (symbol: StoredStockSymbol) => Promise<void>;
   replaceHoldingsSnapshot: (snapshot: HoldingsSnapshot) => Promise<void>;
   replaceMarketDataSnapshot: (snapshot: MarketDataSnapshot) => Promise<void>;
+  replaceSymbolsSnapshot: (symbols: StoredStockSymbol[]) => Promise<void>;
 };
 
 export function openStockPrepDb({
@@ -110,6 +111,7 @@ export function createStockPrepDbRepository(db: IDBDatabase): StockPrepDbReposit
     putSymbol: (symbol) => putValue(db, stockPrepStores.symbols, symbol),
     replaceHoldingsSnapshot: (snapshot) => replaceHoldingsSnapshot(db, snapshot),
     replaceMarketDataSnapshot: (snapshot) => replaceMarketDataSnapshot(db, snapshot),
+    replaceSymbolsSnapshot: (symbols) => replaceSymbolsSnapshot(db, symbols),
   };
 }
 
@@ -246,6 +248,22 @@ async function replaceHoldingsSnapshot(db: IDBDatabase, snapshot: HoldingsSnapsh
 
   for (const cashBalance of snapshot.cashBalances) {
     transaction.objectStore(stockPrepStores.cash).put(cashBalance);
+  }
+
+  await done;
+}
+
+async function replaceSymbolsSnapshot(
+  db: IDBDatabase,
+  symbols: StoredStockSymbol[],
+): Promise<void> {
+  const transaction = db.transaction([stockPrepStores.symbols], "readwrite");
+  const done = transactionDone(transaction);
+
+  transaction.objectStore(stockPrepStores.symbols).clear();
+
+  for (const symbol of symbols) {
+    transaction.objectStore(stockPrepStores.symbols).put(symbol);
   }
 
   await done;
