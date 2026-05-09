@@ -1,164 +1,201 @@
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
-type PriceMetric = {
+import type { RegionCode } from "@stock-prep/shared";
+
+import { StockDetailChart } from "../components/StockDetailChart";
+import {
+  defaultStockDetailChartVisibility,
+  loadStockDetailPageData,
+  type StockDetailChartVisibility,
+  type StockDetailMetric,
+  type StockDetailPageData,
+  type StockDetailTrendSignal,
+} from "../data/stockDetailData";
+import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
+
+type StockDetailState =
+  | { status: "error"; error: string }
+  | { status: "loaded"; detail: StockDetailPageData }
+  | { status: "loading" }
+  | { status: "not-found" };
+
+const toggleItems: Array<{
+  id: keyof StockDetailChartVisibility;
   label: string;
-  value: string;
-  note?: string;
-};
-
-type TrendSignal = {
-  label: string;
-  value: string;
-  description: string;
-  tone: "positive" | "neutral" | "warning";
-};
-
-type StockDetail = {
-  code: string;
-  name: string;
-  market: string;
-  currency: string;
-  sector: string;
-  close: string;
-  change: string;
-  changeRate: string;
-  high: string;
-  low: string;
-  volume: string;
-  week52High: string;
-  week52Low: string;
-  comment: string;
-  priceMetrics: PriceMetric[];
-  trendSignals: TrendSignal[];
-};
-
-const stockDetails: Record<string, StockDetail> = {
-  "7203": {
-    code: "7203",
-    name: "トヨタ自動車",
-    market: "東証プライム",
-    currency: "JPY",
-    sector: "輸送用機器",
-    close: "3,218円",
-    change: "+88円",
-    changeRate: "+2.8%",
-    high: "3,240円",
-    low: "3,112円",
-    volume: "28,430,000株",
-    week52High: "3,386円",
-    week52Low: "2,418円",
-    comment:
-      "出来高を伴って25日線を上回っています。候補として見る場合は、直近高値との距離と保有比率を合わせて確認します。",
-    priceMetrics: [
-      { label: "終値", value: "3,218円", note: "2026年4月17日" },
-      { label: "前日比", value: "+2.8%", note: "+88円" },
-      { label: "高値 / 安値", value: "3,240円 / 3,112円" },
-      { label: "出来高", value: "28,430,000株" },
-    ],
-    trendSignals: [
-      {
-        label: "25MA",
-        value: "上回り",
-        description: "短期線を上回り、押し目からの反発を確認できます。",
-        tone: "positive",
-      },
-      {
-        label: "75MA",
-        value: "上回り",
-        description: "中期のトレンドも上向きの範囲にあります。",
-        tone: "positive",
-      },
-      {
-        label: "高値接近",
-        value: "95%",
-        description: "直近高値に近く、追いかけすぎには注意します。",
-        tone: "warning",
-      },
-    ],
-  },
-  "6758": {
-    code: "6758",
-    name: "ソニーグループ",
-    market: "東証プライム",
-    currency: "JPY",
-    sector: "電気機器",
-    close: "14,240円",
-    change: "+265円",
-    changeRate: "+1.9%",
-    high: "14,380円",
-    low: "13,920円",
-    volume: "4,820,000株",
-    week52High: "15,120円",
-    week52Low: "10,840円",
-    comment:
-      "直近高値に近い位置で推移しています。保有に追加する場合は、電気機器への偏りを先に確認します。",
-    priceMetrics: [
-      { label: "終値", value: "14,240円", note: "2026年4月17日" },
-      { label: "前日比", value: "+1.9%", note: "+265円" },
-      { label: "高値 / 安値", value: "14,380円 / 13,920円" },
-      { label: "出来高", value: "4,820,000株" },
-    ],
-    trendSignals: [
-      {
-        label: "25MA",
-        value: "上回り",
-        description: "短期トレンドは上向きです。",
-        tone: "positive",
-      },
-      {
-        label: "75MA",
-        value: "上回り",
-        description: "中期線の上で推移しています。",
-        tone: "positive",
-      },
-      {
-        label: "高値接近",
-        value: "94%",
-        description: "高値に近く、購入価格の設定を慎重に見ます。",
-        tone: "warning",
-      },
-    ],
-  },
-};
-
-const fallbackStock = stockDetails["7203"];
+}> = [
+  { id: "ma25", label: "25MA" },
+  { id: "ma75", label: "75MA" },
+  { id: "recentHigh", label: "直近高値ライン" },
+  { id: "buyPrice", label: "買値ライン" },
+  { id: "stopLoss", label: "損切りライン" },
+];
 
 export function StockDetailPage() {
   const { symbolCode } = useParams();
-  const stock = symbolCode ? (stockDetails[symbolCode] ?? fallbackStock) : fallbackStock;
+  const [searchParams] = useSearchParams();
+  const [state, setState] = useState<StockDetailState>({ status: "loading" });
+  const [chartVisibility, setChartVisibility] = useState<StockDetailChartVisibility>(
+    defaultStockDetailChartVisibility,
+  );
+
+  const regionParam = searchParams.get("region");
+  const region =
+    regionParam === "JP" || regionParam === "US" || regionParam === "HK"
+      ? regionParam
+      : null;
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      if (!symbolCode) {
+        if (active) {
+          setState({ status: "not-found" });
+        }
+        return;
+      }
+
+      setState({ status: "loading" });
+
+      try {
+        const detail = await loadStockDetailPageData({
+          region: region as RegionCode | null,
+          symbolCode,
+        });
+
+        if (!active) {
+          return;
+        }
+
+        if (!detail) {
+          setState({ status: "not-found" });
+          return;
+        }
+
+        setChartVisibility({
+          ...defaultStockDetailChartVisibility,
+          buyPrice: detail.holding !== null,
+          stopLoss: false,
+        });
+        setState({ detail, status: "loaded" });
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        setState({
+          error: error instanceof Error ? error.message : "銘柄詳細を読み込めませんでした。",
+          status: "error",
+        });
+      }
+    }
+
+    void load();
+    const unsubscribe = subscribeToStockPrepDataChanged(() => {
+      void load();
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [region, symbolCode]);
 
   return (
     <section className="flex flex-col gap-8">
+      {state.status === "loading" ? (
+        <StatusPanel message="銘柄詳細を読み込んでいます。" />
+      ) : state.status === "error" ? (
+        <StatusPanel message={state.error} tone="error" />
+      ) : state.status === "not-found" ? (
+        <StatusPanel message="対象銘柄が見つかりません。検索結果から開き直してください。" />
+      ) : (
+        <LoadedStockDetail
+          chartVisibility={chartVisibility}
+          detail={state.detail}
+          onToggle={(toggleId) => {
+            setChartVisibility((current) => ({
+              ...current,
+              [toggleId]: !current[toggleId],
+            }));
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function LoadedStockDetail({
+  chartVisibility,
+  detail,
+  onToggle,
+}: {
+  chartVisibility: StockDetailChartVisibility;
+  detail: StockDetailPageData;
+  onToggle: (toggleId: keyof StockDetailChartVisibility) => void;
+}) {
+  const latestCloseValue =
+    detail.latestBar !== null
+      ? formatCurrency(detail.latestBar.close, detail.symbol.currency)
+      : detail.symbol.lastClose !== null
+        ? formatCurrency(detail.symbol.lastClose, detail.symbol.currency)
+        : "終値未取得";
+  const latestCloseDate = detail.symbol.lastCloseDate ?? "日付未取得";
+  const latestVolume = detail.latestBar ? formatVolume(detail.latestBar.volume) : "-";
+
+  return (
+    <>
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem] lg:items-start">
         <div className="flex flex-col gap-4">
           <p className="text-sm font-medium text-teal-700">銘柄詳細</p>
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">{stock.name}</h1>
+              <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">
+                {detail.symbol.name}
+              </h1>
               <span className="rounded-md bg-zinc-100 px-2 py-1 text-sm font-medium text-zinc-700">
-                {stock.code}
+                {detail.symbol.code}
               </span>
             </div>
             <p className="max-w-2xl text-base leading-7 text-zinc-700">
-              価格情報、チャート、トレンド分析を確認します。今は静的な銘柄情報を表示しています。
+              必要な履歴だけを R2 から読み込み、軽量データと組み合わせて確認します。
             </p>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
+              <span>{detail.marketLabel}</span>
+              <span>{detail.symbol.currency}</span>
+              <span>{detail.symbol.securityType === "etf" ? "ETF" : "株式"}</span>
+              <span>{detail.symbol.sourceSymbol}</span>
+            </div>
           </div>
         </div>
 
-        <div className="grid gap-3 rounded-md border border-zinc-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium text-zinc-600">市場</span>
-            <span className="text-sm font-semibold text-zinc-950">{stock.market}</span>
+        <aside className="flex flex-col gap-4 rounded-md border border-zinc-200 bg-white p-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium text-zinc-600">最新終値</span>
+            <strong className="text-3xl font-semibold tracking-normal text-zinc-950">
+              {latestCloseValue}
+            </strong>
+            <span className="text-sm text-zinc-600">終値日付: {latestCloseDate}</span>
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium text-zinc-600">通貨</span>
-            <span className="text-sm font-semibold text-zinc-950">{stock.currency}</span>
+
+          <div className="grid gap-2 border-t border-zinc-200 pt-4 text-sm text-zinc-700">
+            <InfoRow label="出来高" value={latestVolume} />
+            <InfoRow label="データ状態" value={detail.importStatusLabel} />
+            <InfoRow label="為替" value={detail.priceMetrics[5]?.value ?? "-"} />
+            <InfoRow
+              label="保有"
+              value={
+                detail.holding
+                  ? `${formatQuantity(detail.holding.quantity)} / 取得 ${formatCurrency(
+                      detail.holding.averagePrice,
+                      detail.holding.currency,
+                    )}`
+                  : "未登録"
+              }
+            />
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium text-zinc-600">業種</span>
-            <span className="text-sm font-semibold text-zinc-950">{stock.sector}</span>
-          </div>
-        </div>
+        </aside>
       </div>
 
       <section className="flex flex-col gap-4" aria-labelledby="price-summary-heading">
@@ -168,8 +205,8 @@ export function StockDetailPage() {
           titleId="price-summary-heading"
         />
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {stock.priceMetrics.map((metric) => (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {detail.priceMetrics.map((metric) => (
             <MetricCard key={metric.label} metric={metric} />
           ))}
         </div>
@@ -177,38 +214,48 @@ export function StockDetailPage() {
 
       <section className="flex flex-col gap-4" aria-labelledby="chart-heading">
         <SectionHeader
-          description="ローソク足、25MA、75MA を置く想定のダミーチャートです。"
+          description="ローソク足と出来高に、移動平均線や保有ラインを重ねて確認します。"
           title="チャート"
           titleId="chart-heading"
         />
 
-        <div className="rounded-md border border-zinc-200 bg-white p-4">
-          <div className="relative min-h-72 overflow-hidden rounded-md bg-zinc-50 p-4">
-            <div className="absolute inset-x-4 top-1/4 border-t border-dashed border-zinc-300" />
-            <div className="absolute inset-x-4 top-1/2 border-t border-dashed border-zinc-300" />
-            <div className="absolute inset-x-4 top-3/4 border-t border-dashed border-zinc-300" />
-            <div className="absolute left-8 right-8 top-28 h-1 rotate-[-8deg] rounded-full bg-teal-700" />
-            <div className="absolute left-8 right-8 top-36 h-1 rotate-[-4deg] rounded-full bg-amber-600" />
+        {detail.chartData.candlesticks.length === 0 ? (
+          <StatusPanel message="この銘柄はまだ日足履歴がありません。" />
+        ) : (
+          <div className="rounded-md border border-zinc-200 bg-white p-4">
+            <StockDetailChart chartData={detail.chartData} visibility={chartVisibility} />
 
-            <div className="absolute inset-x-6 bottom-8 grid grid-cols-12 items-end gap-2">
-              {[64, 88, 72, 104, 96, 118, 108, 132, 126, 148, 136, 158].map((height, index) => (
-                <div
-                  className={
-                    index % 3 === 0 ? "rounded-t-sm bg-amber-600" : "rounded-t-sm bg-teal-700"
-                  }
-                  key={height}
-                  style={{ height }}
-                />
-              ))}
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-zinc-200 pt-4">
+              {toggleItems.map((item) => {
+                const disabled =
+                  (item.id === "buyPrice" || item.id === "stopLoss") && detail.holding === null;
+
+                return (
+                  <label
+                    className={[
+                      "flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-sm",
+                      disabled
+                        ? "border-zinc-200 bg-zinc-100 text-zinc-400"
+                        : "border-zinc-300 bg-white text-zinc-700",
+                    ].join(" ")}
+                    key={item.id}
+                  >
+                    <input
+                      checked={chartVisibility[item.id]}
+                      className="h-4 w-4 accent-teal-700"
+                      disabled={disabled}
+                      onChange={() => {
+                        onToggle(item.id);
+                      }}
+                      type="checkbox"
+                    />
+                    <span>{item.label}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
-
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <LegendItem colorClass="bg-teal-700" label="ローソク足ダミー" />
-            <LegendItem colorClass="bg-teal-700" label="25MA" />
-            <LegendItem colorClass="bg-amber-600" label="75MA" />
-          </div>
-        </div>
+        )}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -220,7 +267,7 @@ export function StockDetailPage() {
           />
 
           <div className="grid gap-3">
-            {stock.trendSignals.map((signal) => (
+            {detail.trendSignals.map((signal) => (
               <TrendCard key={signal.label} signal={signal} />
             ))}
           </div>
@@ -228,16 +275,20 @@ export function StockDetailPage() {
 
         <section className="flex flex-col gap-4" aria-labelledby="comment-heading">
           <SectionHeader
-            description="確認時のメモとして使う想定です。"
-            title="コメント"
+            description="チャートと保有ラインから、確認ポイントを短くまとめます。"
+            title="確認メモ"
             titleId="comment-heading"
           />
 
           <div className="flex min-h-56 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4">
-            <p className="text-sm leading-7 text-zinc-700">{stock.comment}</p>
-            <div className="grid gap-2 pt-4 sm:grid-cols-2 lg:grid-cols-1">
-              <p className="text-sm text-zinc-600">52週高値: {stock.week52High}</p>
-              <p className="text-sm text-zinc-600">52週安値: {stock.week52Low}</p>
+            <ul className="grid gap-3 text-sm leading-7 text-zinc-700">
+              {detail.insightLines.map((line) => (
+                <li key={line}>- {line}</li>
+              ))}
+            </ul>
+            <div className="grid gap-2 pt-4 text-sm text-zinc-600 sm:grid-cols-2 lg:grid-cols-1">
+              <p>dataset version: {detail.datasetVersion}</p>
+              <p>更新時刻: {formatDateTime(detail.generatedAt)}</p>
             </div>
           </div>
         </section>
@@ -247,25 +298,25 @@ export function StockDetailPage() {
         <div className="grid gap-3 sm:grid-cols-3">
           <Link
             className="flex min-h-12 items-center justify-center rounded-md bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-teal-700"
-            to={`/holdings/${stock.code}/edit`}
+            to={`/holdings/${detail.symbol.code}/edit`}
           >
             保有に追加
           </Link>
           <Link
             className="flex min-h-12 items-center justify-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-medium text-zinc-950 transition hover:border-teal-700 hover:text-teal-700"
-            to={`/simulation?symbol=${stock.code}`}
+            to={`/simulation?symbol=${detail.symbol.code}`}
           >
             シミュレーションする
           </Link>
-          <button
-            className="min-h-12 rounded-md border border-zinc-300 bg-white px-5 text-sm font-medium text-zinc-950 transition hover:border-teal-700 hover:text-teal-700"
-            type="button"
+          <Link
+            className="flex min-h-12 items-center justify-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-medium text-zinc-950 transition hover:border-teal-700 hover:text-teal-700"
+            to="/search"
           >
-            ウォッチ追加
-          </button>
+            検索へ戻る
+          </Link>
         </div>
       </section>
-    </section>
+    </>
   );
 }
 
@@ -280,50 +331,98 @@ function SectionHeader({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <h2 className="text-2xl font-semibold tracking-normal" id={titleId}>
+      <h2 className="text-xl font-semibold tracking-normal text-zinc-950" id={titleId}>
         {title}
       </h2>
-      <p className="max-w-2xl text-sm leading-6 text-zinc-700">{description}</p>
+      <p className="text-sm leading-6 text-zinc-600">{description}</p>
     </div>
   );
 }
 
-function MetricCard({ metric }: { metric: PriceMetric }) {
-  const valueClass = metric.value.startsWith("+") ? "text-emerald-700" : "text-zinc-950";
-
+function MetricCard({ metric }: { metric: StockDetailMetric }) {
   return (
-    <div className="min-h-28 rounded-md border border-zinc-200 bg-white p-4">
+    <div className="rounded-md border border-zinc-200 bg-white p-4">
       <p className="text-sm font-medium text-zinc-600">{metric.label}</p>
-      <p className={`mt-2 text-xl font-semibold tracking-normal ${valueClass}`}>{metric.value}</p>
-      {metric.note ? <p className="mt-2 text-sm leading-6 text-zinc-700">{metric.note}</p> : null}
+      <p className="mt-2 text-2xl font-semibold tracking-normal text-zinc-950">{metric.value}</p>
+      {metric.note ? <p className="mt-2 text-sm text-zinc-600">{metric.note}</p> : null}
     </div>
   );
 }
 
-function LegendItem({ colorClass, label }: { colorClass: string; label: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className={`size-3 rounded-sm ${colorClass}`} />
-      <span className="text-sm font-medium text-zinc-700">{label}</span>
-    </div>
-  );
-}
-
-function TrendCard({ signal }: { signal: TrendSignal }) {
-  const valueClass =
+function TrendCard({ signal }: { signal: StockDetailTrendSignal }) {
+  const toneClass =
     signal.tone === "positive"
-      ? "text-emerald-700"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
       : signal.tone === "warning"
-        ? "text-amber-700"
-        : "text-zinc-950";
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-zinc-200 bg-zinc-50 text-zinc-700";
 
   return (
-    <div className="min-h-32 rounded-md border border-zinc-200 bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-medium text-zinc-600">{signal.label}</p>
-        <p className={`text-lg font-semibold tracking-normal ${valueClass}`}>{signal.value}</p>
+    <div className="rounded-md border border-zinc-200 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-lg font-semibold tracking-normal text-zinc-950">{signal.label}</h3>
+        <span className={`rounded-md border px-2 py-1 text-sm font-semibold ${toneClass}`}>
+          {signal.value}
+        </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-zinc-700">{signal.description}</p>
     </div>
   );
+}
+
+function StatusPanel({
+  message,
+  tone = "neutral",
+}: {
+  message: string;
+  tone?: "error" | "neutral";
+}) {
+  return (
+    <div
+      className={[
+        "rounded-md border px-4 py-4 text-sm leading-7",
+        tone === "error"
+          ? "border-rose-200 bg-rose-50 text-rose-700"
+          : "border-zinc-200 bg-white text-zinc-700",
+      ].join(" ")}
+    >
+      {message}
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-zinc-500">{label}</span>
+      <span className="text-right font-medium text-zinc-950">{value}</span>
+    </div>
+  );
+}
+
+function formatCurrency(value: number, currency: "HKD" | "JPY" | "USD"): string {
+  return new Intl.NumberFormat("ja-JP", {
+    currency,
+    maximumFractionDigits: currency === "JPY" ? 0 : 2,
+    minimumFractionDigits: currency === "JPY" ? 0 : 2,
+    style: "currency",
+  }).format(value);
+}
+
+function formatQuantity(value: number): string {
+  return `${new Intl.NumberFormat("ja-JP").format(value)}株`;
+}
+
+function formatVolume(value: number): string {
+  return `${new Intl.NumberFormat("ja-JP").format(value)}株`;
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
 }

@@ -10,16 +10,22 @@ import type {
   ImportJobRecord,
   ImportJobsPayload,
   ImportUploadSessionPayload,
+  LatestExchangeRateSummary,
   LatestSummaryPayload,
   MarketDataPayload,
   PortfolioHolding,
+  StockDetailPayload,
+  StockDetailRequest,
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
 
 import { dummyStockPrepSnapshot } from "../data/seedSnapshot.js";
 import type { StockPrepMarketDataManifest } from "./stockPrepImport.js";
 import { buildLatestSummaryPayload } from "./stockPrepImport.js";
-import { loadPersistedMarketData } from "./stockPrepMarketDataStorage.js";
+import {
+  loadPersistedHistoryBarsForSymbol,
+  loadPersistedMarketData,
+} from "./stockPrepMarketDataStorage.js";
 import {
   assertObjectExists,
   createPresignedUploadUrl,
@@ -96,6 +102,7 @@ type StockPrepServerBackend = {
   getImportJobsPayload(): Promise<ImportJobsPayload>;
   getLatestSummaryPayload(): Promise<LatestSummaryPayload>;
   getMarketDataPayload(): Promise<MarketDataPayload>;
+  getStockDetailPayload(request: StockDetailRequest): Promise<StockDetailPayload | null>;
   importMarketZip(args: {
     fileName: string;
     scopeId: ImportJobRecord["scopeId"];
@@ -173,6 +180,29 @@ function createInMemoryBackend(): StockPrepServerBackend {
     },
     async getMarketDataPayload() {
       return structuredClone(getInMemoryState().marketDataPayload);
+    },
+    async getStockDetailPayload(request) {
+      const latestSummary = await this.getLatestSummaryPayload();
+      const marketData = await this.getMarketDataPayload();
+      const holdingsPayload = await this.getHoldingsPayload();
+      const symbol = findLatestSummarySymbol(latestSummary, request);
+
+      if (!symbol) {
+        return null;
+      }
+
+      return {
+        datasetVersion: latestSummary.datasetVersion,
+        generatedAt: latestSummary.generatedAt,
+        holding: holdingsPayload.holdings.find((holding) => holding.symbolId === symbol.id) ?? null,
+        importStatus:
+          symbol.lastClose !== null && symbol.lastCloseDate !== null ? "ready" : "unavailable",
+        latestExchangeRate: findLatestExchangeRateSummary(latestSummary, symbol.currency),
+        priceHistory: marketData.dailyPrices
+          .filter((bar) => bar.symbolId === symbol.id)
+          .sort((left, right) => left.date.localeCompare(right.date)),
+        symbol,
+      };
     },
     async importMarketZip({ fileName, scopeId, zipBytes }) {
       const state = getInMemoryState();
@@ -446,6 +476,58 @@ function createRemoteBackend(): StockPrepServerBackend {
           error,
         );
         return createInMemoryBackend().getMarketDataPayload();
+      }
+    },
+    async getStockDetailPayload(request) {
+      try {
+        const latestState = await loadLatestDatasetState({ supabase });
+
+        if (!latestState) {
+          return createInMemoryBackend().getStockDetailPayload(request);
+        }
+
+        const manifest = await getJsonObject<StockPrepMarketDataManifest>({
+          key: latestState.latest_manifest_key,
+          r2,
+        });
+        const latestSummary = await getJsonObject<LatestSummaryPayload>({
+          key: manifest.latestSummaryKey,
+          r2,
+        });
+        const symbol = findLatestSummarySymbol(latestSummary, request);
+
+        if (!symbol) {
+          return null;
+        }
+
+        const [holdings, priceHistory] = await Promise.all([
+          loadHoldings({ supabase }).catch((error) => {
+            throw wrapSupabaseSchemaError(error);
+          }),
+          loadPersistedHistoryBarsForSymbol({
+            key: manifest.marketDataKey,
+            readJson: (key) => getJsonObject({ key, r2 }),
+            scopeId: symbol.region,
+            symbolId: symbol.id,
+          }),
+        ]);
+
+        return {
+          datasetVersion: latestSummary.datasetVersion,
+          generatedAt: latestSummary.generatedAt,
+          holding: holdings.find((holding) => holding.symbolId === symbol.id) ?? null,
+          importStatus:
+            symbol.lastClose !== null && symbol.lastCloseDate !== null ? "ready" : "unavailable",
+          latestExchangeRate: findLatestExchangeRateSummary(latestSummary, symbol.currency),
+          priceHistory,
+          symbol,
+        };
+      } catch (error) {
+        console.error(
+          "Falling back to dummy stock detail because remote stock detail load failed.",
+          error,
+        );
+        return createInMemoryBackend().getStockDetailPayload(request);
       }
     },
     async importMarketZip({ fileName, scopeId, zipBytes }) {
@@ -1096,6 +1178,54 @@ export function wrapSupabaseSchemaError(error: unknown): Error {
   }
 
   return error instanceof Error ? error : new Error(message);
+}
+
+function findLatestExchangeRateSummary(
+  latestSummary: LatestSummaryPayload,
+  currency: StockDetailPayload["symbol"]["currency"],
+): LatestExchangeRateSummary | null {
+  if (currency === "JPY") {
+    return null;
+  }
+
+  const pair = currency === "USD" ? "USDJPY" : "HKDJPY";
+
+  return (
+    latestSummary.exchangeRates
+      .filter((rate) => rate.pair === pair)
+      .sort((left, right) => right.date.localeCompare(left.date))
+      .at(0) ?? null
+  );
+}
+
+function findLatestSummarySymbol(
+  latestSummary: LatestSummaryPayload,
+  request: StockDetailRequest,
+): LatestSummaryPayload["symbols"][number] | null {
+  const normalizedCode = request.symbolCode.trim().toUpperCase();
+
+  if (!normalizedCode) {
+    return null;
+  }
+
+  const exactRegionMatch =
+    request.region === undefined || request.region === null
+      ? null
+      : latestSummary.symbols.find(
+          (symbol) => symbol.code.toUpperCase() === normalizedCode && symbol.region === request.region,
+        ) ?? null;
+
+  if (exactRegionMatch) {
+    return exactRegionMatch;
+  }
+
+  return (
+    latestSummary.symbols.find((symbol) => symbol.code.toUpperCase() === normalizedCode) ??
+    latestSummary.symbols.find((symbol) =>
+      symbol.sourceSymbol.toUpperCase().startsWith(normalizedCode),
+    ) ??
+    null
+  );
 }
 
 function validateHoldingRequest(request: UpsertHoldingRequest): void {

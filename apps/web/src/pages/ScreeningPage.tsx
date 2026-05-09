@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { buildStockDetailHref } from "../data/stockDetailHref";
+
 import type { RankedScreeningCandidate } from "@stock-prep/domain";
 
 import {
@@ -270,7 +272,10 @@ function CandidateRow({
   return (
     <Link
       className="grid gap-4 p-4 text-zinc-950 transition hover:bg-zinc-50 lg:grid-cols-[4rem_1fr_7rem_8rem_7rem] lg:items-center"
-      to={`/stocks/${candidate.symbol.code}`}
+      to={buildStockDetailHref({
+        code: candidate.symbol.code,
+        region: candidate.symbol.region,
+      })}
     >
       <p className="w-fit rounded-md bg-teal-50 px-2 py-1 text-sm font-semibold text-teal-700">
         No. {displayRank}

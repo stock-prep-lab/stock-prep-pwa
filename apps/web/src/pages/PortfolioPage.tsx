@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+
+import { buildStockDetailHref } from "../data/stockDetailHref";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 
 import type {
@@ -373,7 +375,10 @@ function HoldingRow({ holding }: { holding: PortfolioHoldingValuation }) {
   return (
     <Link
       className="grid gap-4 p-4 text-zinc-950 transition hover:bg-zinc-50 lg:grid-cols-[1fr_9rem_9rem_8rem_7rem] lg:items-center"
-      to={`/stocks/${symbolCode}`}
+      to={buildStockDetailHref({
+        code: symbolCode,
+        region: holding.symbol?.region ?? null,
+      })}
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
