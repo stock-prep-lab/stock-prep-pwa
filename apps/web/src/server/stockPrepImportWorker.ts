@@ -24,6 +24,7 @@ import {
   deleteObject,
   getBinaryObject,
   getJsonObject,
+  listObjectKeysByPrefix,
   putJsonObject,
 } from "./stockPrepR2.js";
 
@@ -235,7 +236,6 @@ export async function processClaimedImportJob({
 export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerStore {
   const supabase = createSupabaseAdminClient();
   const r2 = createR2Client();
-  let currentArtifactKeys: string[] = [];
   let currentArtifactKeysByScope: Partial<Record<QueuedImportJob["scopeId"], string[]>> = {};
 
   return {
@@ -244,7 +244,13 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
     },
     async deleteCurrentArtifacts(scopeId) {
       const scopeKeys = currentArtifactKeysByScope[scopeId];
-      const keys = scopeKeys && scopeKeys.length > 0 ? scopeKeys : currentArtifactKeys;
+      const keys = resolveScopeArtifactKeysToDelete({
+        scopeKeys,
+        scopePrefixKeys: await listObjectKeysByPrefix({
+          prefix: buildCurrentScopePrefix(scopeId),
+          r2,
+        }),
+      });
       currentArtifactKeysByScope = {
         ...currentArtifactKeysByScope,
         [scopeId]: [],
@@ -283,7 +289,6 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
           key: manifest.marketDataKey,
           readJson: (key) => getJsonObject({ key, r2 }),
         });
-        currentArtifactKeys = persisted.artifactKeys;
         currentArtifactKeysByScope = persisted.artifactKeysByScope;
 
         return {
@@ -291,7 +296,6 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
           marketData: persisted.marketData,
         };
       } catch {
-        currentArtifactKeys = [];
         currentArtifactKeysByScope = {};
         return {
           manifest: null,
@@ -361,7 +365,6 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
         supabase,
         version: marketData.datasetVersion,
       });
-      currentArtifactKeys = persisted.artifactKeys;
       currentArtifactKeysByScope = persisted.artifactKeysByScope;
     },
     async touchJobHeartbeat(jobId) {
@@ -371,6 +374,20 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
       });
     },
   };
+}
+
+export function buildCurrentScopePrefix(scopeId: QueuedImportJob["scopeId"]): string {
+  return `current/${scopeId.toLowerCase()}/`;
+}
+
+export function resolveScopeArtifactKeysToDelete({
+  scopeKeys,
+  scopePrefixKeys,
+}: {
+  scopeKeys: string[] | undefined;
+  scopePrefixKeys: string[];
+}): string[] {
+  return scopeKeys && scopeKeys.length > 0 ? scopeKeys : scopePrefixKeys;
 }
 
 function createDefaultWorkerLogger(): StockPrepImportWorkerLogger {

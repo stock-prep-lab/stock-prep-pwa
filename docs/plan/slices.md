@@ -763,6 +763,9 @@
 - 銘柄詳細画面のモック価格 / モック指標回収
 - R2 の current 日足履歴と IndexedDB の軽量データを使った表示
 - full historical を IndexedDB に全量保存せず、必要な銘柄だけ都度取得する導線
+- R2 読み書きで発生する一時的な TLS / network error に対する retry 導線
+- 新規 scope 追加時に `current` 全体を巻き込まず、対象 scope prefix に閉じた cleanup 方針への修正
+- world currencies の実ファイル配置に合わせた為替取り込み向きの見直し
 - lightweight-charts によるローソク足 / 出来高表示
 - 25MA / 75MA
 - RSI(14)
@@ -783,6 +786,8 @@
 - 購入シミュレーションの高度化
 - Push 通知
 - 分足 / リアルタイム価格
+- `current` 全体を使った staging / swap の導入
+- 2 世代保持運用
 - チャート設定の保存先実装
 - チャート設定画面の実装
 
@@ -793,6 +798,9 @@
 - 25MA / 75MA / 直近高値ライン / 買値 / 損切りラインを個別に表示 / 非表示切り替えできる
 - RSI / ボリンジャーバンド / MACD の判定が銘柄詳細で確認できる
 - 確認メモが RSI / ボリンジャーバンド / MACD の判定を反映している
+- 一時的な R2 通信失敗で、即 partial current になりにくい
+- 新規 scope 追加時でも cleanup が対象 scope prefix に閉じる
+- `USDJPY` / `HKDJPY` の world currencies 取り込み向きが実データ配置と一致している
 - 価格データが空の銘柄でも画面が破綻しない
 - モバイル幅とデスクトップ幅でチャートが視認可能
 
@@ -801,46 +809,13 @@
 - `pnpm typecheck`
 - `pnpm test`
 - チャート用データ変換のユニットテストを追加
+- import worker の R2 retry / cleanup ロジックにユニットテストを追加
 - 表示 / 非表示切り替えの確認観点を PR に記載
 - 検索 / スクリーニング / ポートフォリオから銘柄詳細への導線確認
 
 ---
 
-## Slice 20: import worker の再試行と scope cleanup 安全化
-
-### 対象
-- R2 読み書きで発生する一時的な TLS / network error に対する再試行導線
-- `ERR_SSL_SSLV3_ALERT_BAD_RECORD_MAC` のような一過性失敗を即 `failed` にしにくくする worker 側の耐性強化
-- `deleteCurrentArtifacts()` の fallback 挙動見直し
-- 新規 scope 追加時に `current` 全体を巻き込まず、対象 scope prefix に閉じた cleanup 方針への修正
-- `FX` 初回追加や途中再試行時でも、既存 `JP / US / HK` を不必要に消さない整理
-- world currencies の実ファイル配置に合わせた為替取り込み向きの見直し
-
-### 非対象
-- `current` 全体を使った staging / swap の導入
-- 2 世代保持運用
-- Cloud Run / GitHub Actions など別 runner への移植
-- import worker の通知 / 可視化
-- 失敗 job の自動再投入ルール追加
-
-### 完了条件
-- 一時的な R2 通信失敗で、即 partial current になりにくい
-- 新規 scope 追加時でも cleanup が対象 scope prefix に閉じる
-- `FX` 取り込みや再取り込み時に、既存 `JP / US / HK` を巻き込んで消さない
-- `USDJPY` / `HKDJPY` の world currencies 取り込み向きが実データ配置と一致している
-- モバイル / デスクトップ UI 変更が無い場合でも、worker の安全化意図と運用影響が PR で説明されている
-
-### テスト / 確認観点
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm test`
-- import worker の R2 retry / cleanup ロジックにユニットテストを追加
-- 実 ZIP を使って、途中失敗後の再実行でも他 scope を壊しにくいことを確認
-- `FX` 初回追加ケースで `JP / US / HK` を巻き込まないことを PR に記載
-
----
-
-## Slice 21: 最近見た銘柄 / ウォッチ銘柄 / 保有銘柄導線
+## Slice 20: 最近見た銘柄 / ウォッチ銘柄 / 保有銘柄導線
 
 ### 対象
 - 最近見た銘柄の記録と表示
@@ -873,7 +848,7 @@
 
 ---
 
-## Slice 22: チャート設定の保存先 / 設定画面
+## Slice 21: チャート設定の保存先 / 設定画面
 
 ### 対象
 - ユーザー共通のチャート設定の型定義
@@ -906,7 +881,7 @@
 
 ---
 
-## Slice 23: ホームの本物データ化
+## Slice 22: ホームの本物データ化
 
 ### 対象
 - ホーム画面のモックカード回収
@@ -938,7 +913,7 @@
 
 ---
 
-## Slice 24: スクリーニング完全本物化
+## Slice 23: スクリーニング完全本物化
 
 ### 対象
 - スクリーニング画面に残る暫定表示の回収
@@ -970,7 +945,7 @@
 
 ---
 
-## Slice 25: import worker 運用強化 / launchd・sleep・ログ整備
+## Slice 24: import worker 運用強化 / launchd・sleep・ログ整備
 
 ### 対象
 - Mac `launchd` worker の本運用前提整理
@@ -1012,7 +987,7 @@
 
 ---
 
-## Slice 26: import / worker 通知と運用可視化
+## Slice 25: import / worker 通知と運用可視化
 
 ### 対象
 - import 完了 / 失敗 / 再試行に関する通知方針整理
@@ -1050,7 +1025,7 @@
 
 ---
 
-## Slice 27: PWA 最小基盤
+## Slice 26: PWA 最小基盤
 
 ### 対象
 - Web App Manifest
@@ -1085,7 +1060,7 @@
 
 ---
 
-## Slice 28: Push 購読
+## Slice 27: Push 購読
 
 ### 対象
 - 通知許可導線
@@ -1107,7 +1082,7 @@
 
 ---
 
-## Slice 29: 通知送信
+## Slice 28: 通知送信
 
 ### 対象
 - 日次更新通知
@@ -1128,7 +1103,7 @@
 
 ---
 
-## Slice 30: 仕上げと QA
+## Slice 29: 仕上げと QA
 
 ### 対象
 - UI 微調整
@@ -1158,7 +1133,7 @@
 
 ---
 
-## Slice 31: ローカル開発環境の Docker 分離
+## Slice 30: ローカル開発環境の Docker 分離
 
 ### 対象
 - Docker Compose によるローカル開発環境の追加
@@ -1176,7 +1151,7 @@
 
 ---
 
-## Slice 32: runtime 境界整理と構成リファクタ
+## Slice 31: runtime 境界整理と構成リファクタ
 
 ### 対象
 - 機能変更なしの構成リファクタ
