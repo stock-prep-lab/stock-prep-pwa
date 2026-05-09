@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import type { HoldingFormTarget } from "../data/portfolioRebalanceData";
+import { formatPriceCurrency } from "../data/priceFormat";
 import { buildStockDetailHref } from "../data/stockDetailHref";
 import {
   loadHoldingFormTargetFromIndexedDb,
@@ -323,11 +324,7 @@ function StatusPanel({ message, tone = "info" }: { message: string; tone?: "erro
 }
 
 function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("ja-JP", {
-    currency,
-    maximumFractionDigits: currency === "JPY" ? 0 : 2,
-    style: "currency",
-  }).format(value);
+  return formatPriceCurrency(value, currency);
 }
 
 function formatQuantity(value: number): string {

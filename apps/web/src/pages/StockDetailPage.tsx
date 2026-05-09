@@ -13,6 +13,7 @@ import {
   type StockDetailTrendSignal,
 } from "../data/stockDetailData";
 import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
+import { formatPriceCurrency } from "../data/priceFormat";
 
 type StockDetailState =
   | { status: "error"; error: string }
@@ -547,12 +548,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 function formatCurrency(value: number, currency: "HKD" | "JPY" | "USD"): string {
-  return new Intl.NumberFormat("ja-JP", {
-    currency,
-    maximumFractionDigits: currency === "JPY" ? 0 : 2,
-    minimumFractionDigits: currency === "JPY" ? 0 : 2,
-    style: "currency",
-  }).format(value);
+  return formatPriceCurrency(value, currency);
 }
 
 function formatQuantity(value: number): string {

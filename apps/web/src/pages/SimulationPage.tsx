@@ -13,6 +13,7 @@ import {
   type PurchaseSimulationLoadResult,
   type PurchaseSimulationTarget,
 } from "../data/purchaseSimulationData";
+import { formatPriceCurrency } from "../data/priceFormat";
 import { buildStockDetailHref } from "../data/stockDetailHref";
 import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 
@@ -620,15 +621,15 @@ function formatInputNumber(value: number): string {
 }
 
 function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("ja-JP", {
-    currency,
-    maximumFractionDigits: currency === "JPY" ? 0 : 2,
-    style: "currency",
-  }).format(value);
+  return formatPriceCurrency(value, currency);
 }
 
 function formatJpy(value: number): string {
-  return formatCurrency(value, "JPY");
+  return new Intl.NumberFormat("ja-JP", {
+    currency: "JPY",
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(value);
 }
 
 function formatPercentRatio(value: number): string {

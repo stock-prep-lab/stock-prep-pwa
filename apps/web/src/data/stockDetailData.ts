@@ -7,6 +7,7 @@ import type {
   StoredStockSymbol,
 } from "@stock-prep/shared";
 
+import { formatPriceCurrency } from "./priceFormat";
 import { createStockPrepDbRepository, openStockPrepDb } from "../storage/stockPrepDb";
 import { fetchStockDetail } from "./syncApi";
 
@@ -1105,12 +1106,7 @@ function roundToPriceTick(value: number): number {
 }
 
 function formatCurrency(value: number, currency: StockDetailPayload["symbol"]["currency"]): string {
-  return new Intl.NumberFormat("ja-JP", {
-    currency,
-    maximumFractionDigits: currency === "JPY" ? 0 : 2,
-    minimumFractionDigits: currency === "JPY" ? 0 : 2,
-    style: "currency",
-  }).format(value);
+  return formatPriceCurrency(value, currency);
 }
 
 function formatSignedCurrency(

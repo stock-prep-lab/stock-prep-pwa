@@ -76,11 +76,11 @@ const regionCurrencyMap: Record<SupportedRegion, CurrencyCode> = {
 };
 
 const fxSourceMap = {
-  jpyhkd: {
+  hkdjpy: {
     baseCurrency: "HKD",
     pair: "HKDJPY",
   },
-  jpyusd: {
+  usdjpy: {
     baseCurrency: "USD",
     pair: "USDJPY",
   },
@@ -454,12 +454,11 @@ async function parseWorldCurrencyEntries(
       }
 
       const date = toIsoDate(rawDate);
-      const invertedClose = Number((1 / close).toFixed(6));
       const id = `${mapping.pair}-${date}`;
 
       barsById.set(id, {
         baseCurrency: mapping.baseCurrency,
-        close: invertedClose,
+        close,
         date,
         id,
         pair: mapping.pair,

@@ -15,6 +15,7 @@ import {
   type PortfolioLoadResult,
 } from "../data/portfolioRebalanceData";
 import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
+import { formatPriceCurrency } from "../data/priceFormat";
 
 type PortfolioMetric = {
   label: string;
@@ -529,15 +530,15 @@ function toStatusLabel(status: PortfolioHoldingValuation["status"]): string {
 }
 
 function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("ja-JP", {
-    currency,
-    maximumFractionDigits: currency === "JPY" ? 0 : 2,
-    style: "currency",
-  }).format(value);
+  return formatPriceCurrency(value, currency);
 }
 
 function formatJpy(value: number): string {
-  return formatCurrency(value, "JPY");
+  return new Intl.NumberFormat("ja-JP", {
+    currency: "JPY",
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(value);
 }
 
 function formatSignedJpy(value: number): string {
