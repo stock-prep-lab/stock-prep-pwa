@@ -18,6 +18,7 @@ import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 import { formatPriceCurrency } from "../data/priceFormat";
 import {
   addWatchSymbol,
+  cacheLatestSymbolSummary,
   loadUserSymbolFlags,
   recordRecentViewedSymbol,
   removeWatchSymbol,
@@ -219,6 +220,7 @@ export function StockDetailPage() {
           return;
         }
 
+        await cacheLatestSymbolSummary(detail.symbol);
         const nextFlags = await loadUserSymbolFlags(detail.symbol.id);
 
         if (!active) {

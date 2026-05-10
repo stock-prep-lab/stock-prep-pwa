@@ -1,5 +1,6 @@
 import type {
   RecentSymbolRecord,
+  LatestSymbolSummary,
   StoredStockSymbol,
   UserSymbolsPayload,
   WatchlistSymbolRecord,
@@ -85,6 +86,26 @@ export async function loadUserSymbolFlags(symbolId: string): Promise<{
       isWatched: watchlistSymbol !== null,
       wasRecentlyViewed: recentSymbol !== null,
     };
+  } finally {
+    db.close();
+  }
+}
+
+export async function cacheLatestSymbolSummary(symbol: LatestSymbolSummary): Promise<void> {
+  const db = await openStockPrepDb();
+
+  try {
+    const repository = createStockPrepDbRepository(db);
+    await repository.putSymbol({
+      code: symbol.code,
+      currency: symbol.currency,
+      id: symbol.id,
+      name: symbol.name,
+      region: symbol.region,
+      securityType: symbol.securityType,
+      source: "stooq",
+      sourceSymbol: symbol.sourceSymbol,
+    });
   } finally {
     db.close();
   }
