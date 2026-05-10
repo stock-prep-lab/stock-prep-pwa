@@ -663,8 +663,8 @@ function createRemoteBackend(): StockPrepServerBackend {
     async upsertHolding(request) {
       validateHoldingRequest(request);
 
-      const marketData = await this.getMarketDataPayload();
-      const symbol = marketData.symbols.find((candidate) => candidate.id === request.symbolId);
+      const latestSummary = await this.getLatestSummaryPayload();
+      const symbol = latestSummary.symbols.find((candidate) => candidate.id === request.symbolId);
 
       if (!symbol) {
         throw new Error("保存対象の銘柄がサーバー側に存在しません。");
