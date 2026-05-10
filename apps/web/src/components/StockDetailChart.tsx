@@ -7,6 +7,7 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
+  type LogicalRange,
   type Time,
 } from "lightweight-charts";
 
@@ -45,6 +46,7 @@ export function StockDetailChart({
   visibility: StockDetailChartVisibility;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const visibleLogicalRangeRef = useRef<LogicalRange | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -451,8 +453,21 @@ export function StockDetailChart({
     if (macdPaneIndex !== null) {
       panes[macdPaneIndex]?.setStretchFactor(rsiPaneIndex !== null ? 0.17 : 0.25);
     }
+    if (stochasticPaneIndex !== null) {
+      panes[stochasticPaneIndex]?.setStretchFactor(0.18);
+    }
 
-    chart.timeScale().fitContent();
+    if (visibleLogicalRangeRef.current) {
+      chart.timeScale().setVisibleLogicalRange(visibleLogicalRangeRef.current);
+    } else {
+      chart.timeScale().fitContent();
+    }
+
+    const handleVisibleRangeChange = (range: LogicalRange | null) => {
+      visibleLogicalRangeRef.current = range;
+    };
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
 
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -467,6 +482,8 @@ export function StockDetailChart({
     resizeObserver.observe(container);
 
     return () => {
+      visibleLogicalRangeRef.current = chart.timeScale().getVisibleLogicalRange();
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       resizeObserver.disconnect();
       chart.remove();
     };
