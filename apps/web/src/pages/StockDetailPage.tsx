@@ -51,40 +51,27 @@ const compactLegendItems: Array<{
   colorClass: string;
   id?: keyof StockDetailChartVisibility;
   label: string;
-  parts?: string[];
 }> = [
   { colorClass: "bg-teal-700", id: "ma25", label: "25MA" },
   { colorClass: "bg-amber-600", id: "ma75", label: "75MA" },
-  {
-    colorClass: "bg-blue-600",
-    id: "ichimoku",
-    label: "一目",
-    parts: ["転換", "基準", "先A", "先B"],
-  },
-  {
-    colorClass: "bg-indigo-500",
-    id: "bollinger",
-    label: "ボリンジャー",
-    parts: ["上", "中", "下"],
-  },
-  {
-    colorClass: "bg-fuchsia-600",
-    id: "rsi",
-    label: "RSI",
-    parts: ["本体", "70", "30"],
-  },
-  {
-    colorClass: "bg-emerald-700",
-    id: "stochastic",
-    label: "ストキャス",
-    parts: ["%K", "%D", "80", "20"],
-  },
-  {
-    colorClass: "bg-blue-600",
-    id: "macd",
-    label: "MACD",
-    parts: ["本体", "Signal", "Hist"],
-  },
+  { colorClass: "bg-blue-600", id: "ichimoku", label: "一目 転換" },
+  { colorClass: "bg-violet-600", id: "ichimoku", label: "一目 基準" },
+  { colorClass: "bg-green-600", id: "ichimoku", label: "一目 先A" },
+  { colorClass: "bg-red-600", id: "ichimoku", label: "一目 先B" },
+  { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 上" },
+  { colorClass: "bg-indigo-300", id: "bollinger", label: "BB 中" },
+  { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 下" },
+  { colorClass: "bg-fuchsia-600", id: "rsi", label: "RSI 本体" },
+  { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 70" },
+  { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 30" },
+  { colorClass: "bg-emerald-700", id: "stochastic", label: "ストキャス %K" },
+  { colorClass: "bg-amber-600", id: "stochastic", label: "ストキャス %D" },
+  { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 80" },
+  { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 20" },
+  { colorClass: "bg-blue-600", id: "macd", label: "MACD 本体" },
+  { colorClass: "bg-orange-500", id: "macd", label: "MACD Signal" },
+  { colorClass: "bg-emerald-700", id: "macd", label: "MACD Hist+" },
+  { colorClass: "bg-amber-600", id: "macd", label: "MACD Hist-" },
   { colorClass: "bg-zinc-500", id: "recentHigh", label: "高値" },
   { colorClass: "bg-blue-500", id: "buyPrice", label: "買値" },
   { colorClass: "bg-red-600", id: "stopLoss", label: "損切り" },
@@ -546,7 +533,6 @@ function CompactChartLegend({
           >
             <span className={`h-2 w-2 rounded-full ${item.colorClass}`} />
             <span className="font-medium text-zinc-800">{item.label}</span>
-            {item.parts ? <span className="text-zinc-500">{item.parts.join("/")}</span> : null}
           </span>
         ))}
       </div>
