@@ -1,22 +1,29 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type {
-  CashBalance,
-  CreateImportUploadSessionRequest,
-  DatasetVersionPayload,
-  FinalizeImportUploadRequest,
-  HoldingsPayload,
-  ImportJobRecord,
-  ImportJobsPayload,
-  ImportUploadSessionPayload,
-  LatestExchangeRateSummary,
-  LatestSummaryPayload,
-  MarketDataPayload,
-  PortfolioHolding,
-  StockDetailPayload,
-  StockDetailRequest,
-  UpsertHoldingRequest,
+import {
+  RECENT_SYMBOLS_MAX_COUNT,
+  WATCHLIST_MAX_COUNT,
+  type CashBalance,
+  type CreateImportUploadSessionRequest,
+  type DatasetVersionPayload,
+  type FinalizeImportUploadRequest,
+  type HoldingsPayload,
+  type ImportJobRecord,
+  type ImportJobsPayload,
+  type ImportUploadSessionPayload,
+  type LatestExchangeRateSummary,
+  type LatestSummaryPayload,
+  type MarketDataPayload,
+  type PortfolioHolding,
+  type RecentSymbolRecord,
+  type RecordRecentSymbolRequest,
+  type StockDetailPayload,
+  type StockDetailRequest,
+  type UpsertHoldingRequest,
+  type UpsertWatchlistSymbolRequest,
+  type UserSymbolsPayload,
+  type WatchlistSymbolRecord,
 } from "@stock-prep/shared";
 
 import { dummyStockPrepSnapshot } from "../data/seedSnapshot.js";
@@ -40,6 +47,7 @@ type StockPrepServerState = {
   importJobs: ImportJobRecord[];
   marketDataPayload: MarketDataPayload;
   rawZipByJobId: Map<string, { rawObjectKey: string; zipBytes: Uint8Array }>;
+  userSymbolsPayload: UserSymbolsPayload;
 };
 
 export type DatasetStateRow = {
@@ -86,6 +94,16 @@ type CashBalanceRow = {
   updated_at: string;
 };
 
+type RecentSymbolRow = {
+  symbol_id: string;
+  viewed_at: string;
+};
+
+type WatchlistSymbolRow = {
+  added_at: string;
+  symbol_id: string;
+};
+
 export type QueuedImportJob = ImportJobRecord & {
   rawObjectKey: string;
 };
@@ -103,11 +121,15 @@ type StockPrepServerBackend = {
   getLatestSummaryPayload(): Promise<LatestSummaryPayload>;
   getMarketDataPayload(): Promise<MarketDataPayload>;
   getStockDetailPayload(request: StockDetailRequest): Promise<StockDetailPayload | null>;
+  getUserSymbolsPayload(): Promise<UserSymbolsPayload>;
   importMarketZip(args: {
     fileName: string;
     scopeId: ImportJobRecord["scopeId"];
     zipBytes: Uint8Array;
   }): Promise<ImportJobRecord>;
+  addWatchlistSymbol(request: UpsertWatchlistSymbolRequest): Promise<UserSymbolsPayload>;
+  removeWatchlistSymbol(symbolId: string): Promise<UserSymbolsPayload>;
+  recordRecentSymbol(request: RecordRecentSymbolRequest): Promise<UserSymbolsPayload>;
   upsertHolding(request: UpsertHoldingRequest): Promise<HoldingsPayload>;
 };
 
@@ -128,6 +150,8 @@ const supabaseTableNames = {
   datasetState: "stock_prep_dataset_state",
   holdings: "stock_prep_holdings",
   importJobs: "stock_prep_import_jobs",
+  recentSymbols: "stock_prep_recent_symbols",
+  watchlist: "stock_prep_watchlist",
 } as const;
 
 export function getStockPrepServerBackend(): StockPrepServerBackend {
@@ -165,6 +189,9 @@ function createInMemoryBackend(): StockPrepServerBackend {
     },
     async getHoldingsPayload() {
       return structuredClone(getInMemoryState().holdingsPayload);
+    },
+    async getUserSymbolsPayload() {
+      return structuredClone(getInMemoryState().userSymbolsPayload);
     },
     async getImportJobsPayload() {
       const { importJobs, marketDataPayload } = getInMemoryState();
@@ -288,6 +315,54 @@ function createInMemoryBackend(): StockPrepServerBackend {
 
       return structuredClone(state.holdingsPayload);
     },
+    async addWatchlistSymbol({ symbolId }) {
+      const state = getInMemoryState();
+      const updatedAt = new Date().toISOString();
+      const filtered = state.userSymbolsPayload.watchlist.filter((item) => item.symbolId !== symbolId);
+
+      if (filtered.length >= WATCHLIST_MAX_COUNT) {
+        throw new Error(`ウォッチ銘柄は最大 ${WATCHLIST_MAX_COUNT} 件までです。`);
+      }
+
+      state.userSymbolsPayload = {
+        ...state.userSymbolsPayload,
+        updatedAt,
+        watchlist: [...filtered, { addedAt: updatedAt, symbolId }].sort((left, right) =>
+          right.addedAt.localeCompare(left.addedAt),
+        ),
+      };
+
+      return structuredClone(state.userSymbolsPayload);
+    },
+    async removeWatchlistSymbol(symbolId) {
+      const state = getInMemoryState();
+      const nextWatchlist = state.userSymbolsPayload.watchlist.filter((item) => item.symbolId !== symbolId);
+      const updatedAt = new Date().toISOString();
+
+      state.userSymbolsPayload = {
+        ...state.userSymbolsPayload,
+        updatedAt,
+        watchlist: nextWatchlist,
+      };
+
+      return structuredClone(state.userSymbolsPayload);
+    },
+    async recordRecentSymbol({ symbolId }) {
+      const state = getInMemoryState();
+      const updatedAt = new Date().toISOString();
+      const filtered = state.userSymbolsPayload.recentSymbols.filter((item) => item.symbolId !== symbolId);
+      const nextRecentSymbols = [...filtered, { symbolId, viewedAt: updatedAt }]
+        .sort((left, right) => right.viewedAt.localeCompare(left.viewedAt))
+        .slice(0, RECENT_SYMBOLS_MAX_COUNT);
+
+      state.userSymbolsPayload = {
+        ...state.userSymbolsPayload,
+        recentSymbols: nextRecentSymbols,
+        updatedAt,
+      };
+
+      return structuredClone(state.userSymbolsPayload);
+    },
   };
 }
 
@@ -409,6 +484,26 @@ function createRemoteBackend(): StockPrepServerBackend {
         cashBalances: resolvedCashBalances,
         holdings,
         updatedAt: updatedAt ?? defaultGeneratedAt,
+      };
+    },
+    async getUserSymbolsPayload() {
+      const [recentSymbols, watchlist] = await Promise.all([
+        loadRecentSymbols({ supabase }).catch((error) => {
+          throw wrapSupabaseSchemaError(error);
+        }),
+        loadWatchlistSymbols({ supabase }).catch((error) => {
+          throw wrapSupabaseSchemaError(error);
+        }),
+      ]);
+
+      if (recentSymbols.length === 0 && watchlist.length === 0) {
+        return createInMemoryBackend().getUserSymbolsPayload();
+      }
+
+      return {
+        recentSymbols,
+        updatedAt: getLatestUserSymbolsUpdatedAt({ recentSymbols, watchlist }),
+        watchlist,
       };
     },
     async getImportJobsPayload() {
@@ -592,6 +687,57 @@ function createRemoteBackend(): StockPrepServerBackend {
 
       return this.getHoldingsPayload();
     },
+    async addWatchlistSymbol({ symbolId }) {
+      const current = await this.getUserSymbolsPayload();
+
+      if (
+        !current.watchlist.some((item) => item.symbolId === symbolId) &&
+        current.watchlist.length >= WATCHLIST_MAX_COUNT
+      ) {
+        throw new Error(`ウォッチ銘柄は最大 ${WATCHLIST_MAX_COUNT} 件までです。`);
+      }
+
+      await upsertWatchlistSymbolRow({
+        record: {
+          addedAt: new Date().toISOString(),
+          symbolId,
+        },
+        supabase,
+      }).catch((error) => {
+        throw wrapSupabaseSchemaError(error);
+      });
+
+      return this.getUserSymbolsPayload();
+    },
+    async removeWatchlistSymbol(symbolId) {
+      await deleteWatchlistSymbolRow({
+        supabase,
+        symbolId,
+      }).catch((error) => {
+        throw wrapSupabaseSchemaError(error);
+      });
+
+      return this.getUserSymbolsPayload();
+    },
+    async recordRecentSymbol({ symbolId }) {
+      await upsertRecentSymbolRow({
+        record: {
+          symbolId,
+          viewedAt: new Date().toISOString(),
+        },
+        supabase,
+      }).catch((error) => {
+        throw wrapSupabaseSchemaError(error);
+      });
+      await trimRecentSymbols({
+        limit: RECENT_SYMBOLS_MAX_COUNT,
+        supabase,
+      }).catch((error) => {
+        throw wrapSupabaseSchemaError(error);
+      });
+
+      return this.getUserSymbolsPayload();
+    },
   };
 
   return backend;
@@ -623,6 +769,11 @@ function createDefaultServerState(): StockPrepServerState {
       symbols: structuredClone(dummyStockPrepSnapshot.symbols),
     },
     rawZipByJobId: new Map(),
+    userSymbolsPayload: {
+      recentSymbols: [],
+      updatedAt: defaultGeneratedAt,
+      watchlist: [],
+    },
   };
 }
 
@@ -760,6 +911,42 @@ async function loadCashBalances({
   }
 
   return ((data ?? []) as CashBalanceRow[]).map(mapCashBalanceRow);
+}
+
+async function loadRecentSymbols({
+  supabase,
+}: {
+  supabase: SupabaseClient;
+}): Promise<RecentSymbolRecord[]> {
+  const { data, error } = await supabase
+    .from(supabaseTableNames.recentSymbols)
+    .select("*")
+    .order("viewed_at", { ascending: false })
+    .limit(RECENT_SYMBOLS_MAX_COUNT);
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as RecentSymbolRow[]).map(mapRecentSymbolRow);
+}
+
+async function loadWatchlistSymbols({
+  supabase,
+}: {
+  supabase: SupabaseClient;
+}): Promise<WatchlistSymbolRecord[]> {
+  const { data, error } = await supabase
+    .from(supabaseTableNames.watchlist)
+    .select("*")
+    .order("added_at", { ascending: false })
+    .limit(WATCHLIST_MAX_COUNT);
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as WatchlistSymbolRow[]).map(mapWatchlistSymbolRow);
 }
 
 export async function claimNextQueuedImportJob({
@@ -955,6 +1142,90 @@ async function upsertHoldingRow({
   }
 }
 
+async function upsertRecentSymbolRow({
+  record,
+  supabase,
+}: {
+  record: RecentSymbolRecord;
+  supabase: SupabaseClient;
+}): Promise<void> {
+  const { error } = await supabase
+    .from(supabaseTableNames.recentSymbols)
+    .upsert(mapRecentSymbolRecord(record));
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function trimRecentSymbols({
+  limit,
+  supabase,
+}: {
+  limit: number;
+  supabase: SupabaseClient;
+}): Promise<void> {
+  const { data, error } = await supabase
+    .from(supabaseTableNames.recentSymbols)
+    .select("symbol_id, viewed_at")
+    .order("viewed_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  const staleRows = ((data ?? []) as RecentSymbolRow[]).slice(limit);
+
+  if (staleRows.length === 0) {
+    return;
+  }
+
+  const { error: deleteError } = await supabase
+    .from(supabaseTableNames.recentSymbols)
+    .delete()
+    .in(
+      "symbol_id",
+      staleRows.map((row) => row.symbol_id),
+    );
+
+  if (deleteError) {
+    throw deleteError;
+  }
+}
+
+async function upsertWatchlistSymbolRow({
+  record,
+  supabase,
+}: {
+  record: WatchlistSymbolRecord;
+  supabase: SupabaseClient;
+}): Promise<void> {
+  const { error } = await supabase
+    .from(supabaseTableNames.watchlist)
+    .upsert(mapWatchlistSymbolRecord(record));
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function deleteWatchlistSymbolRow({
+  supabase,
+  symbolId,
+}: {
+  supabase: SupabaseClient;
+  symbolId: string;
+}): Promise<void> {
+  const { error } = await supabase
+    .from(supabaseTableNames.watchlist)
+    .delete()
+    .eq("symbol_id", symbolId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 function mapImportJobRecord(
   job: ImportJobRecord,
   { rawObjectKey }: { rawObjectKey?: string } = {},
@@ -1063,6 +1334,48 @@ function mapCashBalanceRow(row: CashBalanceRow): CashBalance {
     currency: row.currency,
     updatedAt: row.updated_at,
   };
+}
+
+function mapRecentSymbolRecord(record: RecentSymbolRecord): RecentSymbolRow {
+  return {
+    symbol_id: record.symbolId,
+    viewed_at: record.viewedAt,
+  };
+}
+
+function mapRecentSymbolRow(row: RecentSymbolRow): RecentSymbolRecord {
+  return {
+    symbolId: row.symbol_id,
+    viewedAt: row.viewed_at,
+  };
+}
+
+function mapWatchlistSymbolRecord(record: WatchlistSymbolRecord): WatchlistSymbolRow {
+  return {
+    added_at: record.addedAt,
+    symbol_id: record.symbolId,
+  };
+}
+
+function mapWatchlistSymbolRow(row: WatchlistSymbolRow): WatchlistSymbolRecord {
+  return {
+    addedAt: row.added_at,
+    symbolId: row.symbol_id,
+  };
+}
+
+function getLatestUserSymbolsUpdatedAt({
+  recentSymbols,
+  watchlist,
+}: {
+  recentSymbols: RecentSymbolRecord[];
+  watchlist: WatchlistSymbolRecord[];
+}): string {
+  return (
+    [...recentSymbols.map((record) => record.viewedAt), ...watchlist.map((record) => record.addedAt)]
+      .sort((left, right) => right.localeCompare(left))
+      .at(0) ?? defaultGeneratedAt
+  );
 }
 
 function sanitizePathSegment(value: string): string {

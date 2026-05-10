@@ -7,8 +7,10 @@ import type {
   DailyPriceBar,
   ExchangeRateBar,
   PortfolioHolding,
+  RecentSymbolRecord,
   StoredSyncState,
   StoredStockSymbol,
+  WatchlistSymbolRecord,
 } from "@stock-prep/shared";
 
 import {
@@ -89,21 +91,33 @@ describe("stockPrepDb", () => {
       id: "market-data",
       syncedAt: "2026-04-17T15:35:00+09:00",
     };
+    const recentSymbol: RecentSymbolRecord = {
+      symbolId: "jp-7203",
+      viewedAt: "2026-04-18T09:00:00+09:00",
+    };
+    const watchlistSymbol: WatchlistSymbolRecord = {
+      addedAt: "2026-04-18T09:05:00+09:00",
+      symbolId: "jp-7203",
+    };
 
     await repository.putSymbol(symbol);
     await repository.putDailyPrice(dailyPrice);
     await repository.putExchangeRate(exchangeRate);
     await repository.putHolding(holding);
+    await repository.putRecentSymbol(recentSymbol);
     await repository.putCashBalance(cashBalance);
     await repository.putSyncState(syncState);
+    await repository.putWatchlistSymbol(watchlistSymbol);
 
     await expect(repository.getSymbol("jp-7203")).resolves.toEqual(symbol);
     await expect(repository.getSymbolByCodeRegion("7203", "JP")).resolves.toEqual(symbol);
     await expect(repository.getDailyPrice("jp-7203-2026-04-17")).resolves.toEqual(dailyPrice);
     await expect(repository.getExchangeRate("USDJPY-2026-04-17")).resolves.toEqual(exchangeRate);
     await expect(repository.getHolding("holding-jp-7203")).resolves.toEqual(holding);
+    await expect(repository.getRecentSymbol("jp-7203")).resolves.toEqual(recentSymbol);
     await expect(repository.getCashBalance("JPY")).resolves.toEqual(cashBalance);
     await expect(repository.getSyncState("market-data")).resolves.toEqual(syncState);
+    await expect(repository.getWatchlistSymbol("jp-7203")).resolves.toEqual(watchlistSymbol);
   });
 
   it("saves and loads the dummy snapshot", async () => {
@@ -156,6 +170,50 @@ describe("stockPrepDb", () => {
       holdings: [],
       symbols: [dummyStockPrepSnapshot.symbols[1]!],
     });
+  });
+
+  it("replaces and deletes user symbol snapshots", async () => {
+    const repository = createStockPrepDbRepository(db);
+
+    await repository.putRecentSymbol({
+      symbolId: "jp-7203",
+      viewedAt: "2026-04-18T09:00:00+09:00",
+    });
+    await repository.putWatchlistSymbol({
+      addedAt: "2026-04-18T09:05:00+09:00",
+      symbolId: "jp-7203",
+    });
+
+    await repository.replaceUserSymbolsSnapshot({
+      recentSymbols: [
+        {
+          symbolId: "jp-9432",
+          viewedAt: "2026-04-18T10:00:00+09:00",
+        },
+      ],
+      watchlist: [
+        {
+          addedAt: "2026-04-18T10:05:00+09:00",
+          symbolId: "jp-9432",
+        },
+      ],
+    });
+
+    await expect(repository.listRecentSymbols()).resolves.toEqual([
+      {
+        symbolId: "jp-9432",
+        viewedAt: "2026-04-18T10:00:00+09:00",
+      },
+    ]);
+    await expect(repository.listWatchlistSymbols()).resolves.toEqual([
+      {
+        addedAt: "2026-04-18T10:05:00+09:00",
+        symbolId: "jp-9432",
+      },
+    ]);
+
+    await repository.deleteWatchlistSymbol("jp-9432");
+    await expect(repository.listWatchlistSymbols()).resolves.toEqual([]);
   });
 });
 

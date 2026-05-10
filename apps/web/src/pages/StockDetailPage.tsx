@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import type { RegionCode } from "@stock-prep/shared";
 
 import { StockDetailChart } from "../components/StockDetailChart";
+import { UserSymbolBadges } from "../components/UserSymbolBadges";
+import { WatchToggleButton } from "../components/WatchToggleButton";
 import {
   defaultStockDetailChartVisibility,
   loadStockDetailPageData,
@@ -14,6 +16,13 @@ import {
 } from "../data/stockDetailData";
 import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 import { formatPriceCurrency } from "../data/priceFormat";
+import {
+  addWatchSymbol,
+  loadUserSymbolFlags,
+  recordRecentViewedSymbol,
+  removeWatchSymbol,
+} from "../data/userSymbolsData";
+import { subscribeToUserSymbolsChanged } from "../data/userSymbolsEvents";
 
 type StockDetailState =
   | { status: "error"; error: string }
@@ -156,12 +165,31 @@ export function StockDetailPage() {
   const [chartVisibility, setChartVisibility] = useState<StockDetailChartVisibility>(
     defaultStockDetailChartVisibility,
   );
+  const lastRecordedSymbolIdRef = useRef<string | null>(null);
+  const [symbolFlags, setSymbolFlags] = useState({
+    isHeld: false,
+    isWatched: false,
+    wasRecentlyViewed: false,
+  });
 
   const regionParam = searchParams.get("region");
   const region =
     regionParam === "JP" || regionParam === "US" || regionParam === "HK"
       ? regionParam
       : null;
+
+  async function handleToggleWatchSymbol(symbolId: string, isWatched: boolean) {
+    try {
+      if (isWatched) {
+        await removeWatchSymbol(symbolId);
+        return;
+      }
+
+      await addWatchSymbol(symbolId);
+    } catch (error) {
+      console.error("Failed to toggle watch symbol from stock detail.", error);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -191,6 +219,13 @@ export function StockDetailPage() {
           return;
         }
 
+        const nextFlags = await loadUserSymbolFlags(detail.symbol.id);
+
+        if (!active) {
+          return;
+        }
+
+        setSymbolFlags(nextFlags);
         setChartVisibility({
           ...defaultStockDetailChartVisibility,
           buyPrice: detail.holding !== null,
@@ -210,15 +245,32 @@ export function StockDetailPage() {
     }
 
     void load();
-    const unsubscribe = subscribeToStockPrepDataChanged(() => {
+    const unsubscribeData = subscribeToStockPrepDataChanged(() => {
+      void load();
+    });
+    const unsubscribeUserSymbols = subscribeToUserSymbolsChanged(() => {
       void load();
     });
 
     return () => {
       active = false;
-      unsubscribe();
+      unsubscribeData();
+      unsubscribeUserSymbols();
     };
   }, [region, symbolCode]);
+
+  useEffect(() => {
+    if (state.status !== "loaded") {
+      return;
+    }
+
+    if (lastRecordedSymbolIdRef.current === state.detail.symbol.id) {
+      return;
+    }
+
+    lastRecordedSymbolIdRef.current = state.detail.symbol.id;
+    void recordRecentViewedSymbol(state.detail.symbol.id).catch(() => undefined);
+  }, [state]);
 
   return (
     <section className="flex flex-col gap-8">
@@ -232,6 +284,11 @@ export function StockDetailPage() {
         <LoadedStockDetail
           chartVisibility={chartVisibility}
           detail={state.detail}
+          isWatched={symbolFlags.isWatched}
+          onToggleWatch={() => {
+            void handleToggleWatchSymbol(state.detail.symbol.id, symbolFlags.isWatched);
+          }}
+          symbolFlags={symbolFlags}
           onToggle={(toggleId) => {
             setChartVisibility((current) => ({
               ...current,
@@ -247,11 +304,21 @@ export function StockDetailPage() {
 function LoadedStockDetail({
   chartVisibility,
   detail,
+  isWatched,
   onToggle,
+  onToggleWatch,
+  symbolFlags,
 }: {
   chartVisibility: StockDetailChartVisibility;
   detail: StockDetailPageData;
+  isWatched: boolean;
   onToggle: (toggleId: keyof StockDetailChartVisibility) => void;
+  onToggleWatch: () => void;
+  symbolFlags: {
+    isHeld: boolean;
+    isWatched: boolean;
+    wasRecentlyViewed: boolean;
+  };
 }) {
   const [activeHelpLabel, setActiveHelpLabel] = useState<string | null>(null);
   const latestCloseValue =
@@ -276,6 +343,11 @@ function LoadedStockDetail({
               <span className="rounded-md bg-zinc-100 px-2 py-1 text-sm font-medium text-zinc-700">
                 {detail.symbol.code}
               </span>
+              <UserSymbolBadges
+                isHeld={symbolFlags.isHeld}
+                isWatched={symbolFlags.isWatched}
+                wasRecentlyViewed={symbolFlags.wasRecentlyViewed}
+              />
             </div>
             <p className="max-w-2xl text-base leading-7 text-zinc-700">
               必要な履歴だけを R2 から読み込み、軽量データと組み合わせて確認します。
@@ -285,6 +357,9 @@ function LoadedStockDetail({
               <span>{detail.symbol.currency}</span>
               <span>{detail.symbol.securityType === "etf" ? "ETF" : "株式"}</span>
               <span>{detail.symbol.sourceSymbol}</span>
+            </div>
+            <div>
+              <WatchToggleButton isWatched={isWatched} onClick={onToggleWatch} />
             </div>
           </div>
         </div>
@@ -436,7 +511,14 @@ function LoadedStockDetail({
       </div>
 
       <section className="rounded-md border border-teal-200 bg-white p-4" aria-label="アクション">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <button
+            className="flex min-h-12 items-center justify-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-medium text-zinc-950 transition hover:border-teal-700 hover:text-teal-700"
+            onClick={onToggleWatch}
+            type="button"
+          >
+            {isWatched ? "ウォッチ解除" : "ウォッチ追加"}
+          </button>
           <Link
             className="flex min-h-12 items-center justify-center rounded-md bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-teal-700"
             to={`/holdings/${detail.symbol.code}/edit`}

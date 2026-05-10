@@ -3,9 +3,12 @@ import type {
   HoldingsPayload,
   LatestSummaryPayload,
   MarketDataPayload,
+  RecordRecentSymbolRequest,
   StockDetailPayload,
   StockDetailRequest,
+  UpsertWatchlistSymbolRequest,
   UpsertHoldingRequest,
+  UserSymbolsPayload,
 } from "@stock-prep/shared";
 import { fetchWithApiActivity } from "./apiActivity";
 
@@ -81,6 +84,15 @@ export async function fetchHoldings({
   return readJsonResponse<HoldingsPayload>(response);
 }
 
+export async function fetchUserSymbols({
+  activity = "foreground",
+}: {
+  activity?: ApiActivityMode;
+} = {}): Promise<UserSymbolsPayload> {
+  const response = await fetchWithApiActivity("/api/user-symbols", undefined, { activity });
+  return readJsonResponse<UserSymbolsPayload>(response);
+}
+
 export async function upsertHolding(request: UpsertHoldingRequest): Promise<HoldingsPayload> {
   const response = await fetchWithApiActivity("/api/holdings", {
     body: JSON.stringify(request),
@@ -91,6 +103,69 @@ export async function upsertHolding(request: UpsertHoldingRequest): Promise<Hold
   });
 
   return readJsonResponse<HoldingsPayload>(response);
+}
+
+export async function recordRecentSymbol(
+  request: RecordRecentSymbolRequest,
+  {
+    activity = "background",
+  }: {
+    activity?: ApiActivityMode;
+  } = {},
+): Promise<UserSymbolsPayload> {
+  const response = await fetchWithApiActivity(
+    "/api/recent-symbols",
+    {
+      body: JSON.stringify(request),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PUT",
+    },
+    { activity },
+  );
+
+  return readJsonResponse<UserSymbolsPayload>(response);
+}
+
+export async function addWatchlistSymbol(
+  request: UpsertWatchlistSymbolRequest,
+  {
+    activity = "background",
+  }: {
+    activity?: ApiActivityMode;
+  } = {},
+): Promise<UserSymbolsPayload> {
+  const response = await fetchWithApiActivity(
+    "/api/watchlist",
+    {
+      body: JSON.stringify(request),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PUT",
+    },
+    { activity },
+  );
+
+  return readJsonResponse<UserSymbolsPayload>(response);
+}
+
+export async function removeWatchlistSymbol(
+  symbolId: string,
+  {
+    activity = "background",
+  }: {
+    activity?: ApiActivityMode;
+  } = {},
+): Promise<UserSymbolsPayload> {
+  const query = new URLSearchParams();
+  query.set("symbolId", symbolId);
+  const response = await fetchWithApiActivity(`/api/watchlist?${query.toString()}`, {
+    method: "DELETE",
+  }, { activity });
+
+  return readJsonResponse<UserSymbolsPayload>(response);
 }
 
 async function readJsonResponse<T>(response: Response): Promise<T> {

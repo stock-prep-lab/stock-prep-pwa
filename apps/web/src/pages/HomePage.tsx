@@ -1,4 +1,18 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+
+import { PaginationControls } from "../components/PaginationControls";
+import { UserSymbolBadges } from "../components/UserSymbolBadges";
+import { WatchToggleButton } from "../components/WatchToggleButton";
+import { buildStockDetailHref } from "../data/stockDetailHref";
+import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
+import {
+  addWatchSymbol,
+  loadUserSymbolsSnapshotFromIndexedDb,
+  removeWatchSymbol,
+  type UserSymbolListItem,
+} from "../data/userSymbolsData";
+import { subscribeToUserSymbolsChanged } from "../data/userSymbolsEvents";
 
 type UpdateSummary = {
   marketDate: string;
@@ -12,6 +26,7 @@ type Candidate = {
   rank: number;
   code: string;
   name: string;
+  region: "JP";
   signal: string;
   score: number;
   changeRate: string;
@@ -30,13 +45,6 @@ type RebalanceAlert = {
   severity: "注意" | "確認";
 };
 
-type WatchChange = {
-  code: string;
-  name: string;
-  note: string;
-  trend: "up" | "down";
-};
-
 const updateSummary: UpdateSummary = {
   marketDate: "2026年4月17日",
   importedAt: "15:35",
@@ -50,6 +58,7 @@ const candidates: Candidate[] = [
     rank: 1,
     code: "7203",
     name: "トヨタ自動車",
+    region: "JP",
     signal: "出来高を伴って25日線を上抜け",
     score: 91,
     changeRate: "+2.8%",
@@ -58,6 +67,7 @@ const candidates: Candidate[] = [
     rank: 2,
     code: "6758",
     name: "ソニーグループ",
+    region: "JP",
     signal: "直近高値に接近",
     score: 87,
     changeRate: "+1.9%",
@@ -66,6 +76,7 @@ const candidates: Candidate[] = [
     rank: 3,
     code: "8035",
     name: "東京エレクトロン",
+    region: "JP",
     signal: "75日線の上で反発",
     score: 84,
     changeRate: "+1.4%",
@@ -85,25 +96,71 @@ const rebalanceAlert: RebalanceAlert = {
   severity: "注意",
 };
 
-const watchChanges: WatchChange[] = [
-  {
-    code: "9432",
-    name: "日本電信電話",
-    note: "5日続伸。配当目的の監視候補として継続。",
-    trend: "up",
-  },
-  {
-    code: "8306",
-    name: "三菱UFJフィナンシャル・グループ",
-    note: "前日比は小幅安。押し目候補として確認。",
-    trend: "down",
-  },
-];
-
 const marketImageUrl =
   "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=900&q=80";
+const userSymbolPageSize = 10;
 
 export function HomePage() {
+  const [recentSymbols, setRecentSymbols] = useState<UserSymbolListItem[]>([]);
+  const [watchlist, setWatchlist] = useState<UserSymbolListItem[]>([]);
+  const [recentPage, setRecentPage] = useState(1);
+  const [watchlistPage, setWatchlistPage] = useState(1);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      const snapshot = await loadUserSymbolsSnapshotFromIndexedDb();
+
+      if (!active) {
+        return;
+      }
+
+      setRecentSymbols(snapshot.recentSymbols);
+      setWatchlist(snapshot.watchlist);
+    }
+
+    void load().catch(() => undefined);
+    const unsubscribeData = subscribeToStockPrepDataChanged(() => {
+      void load().catch(() => undefined);
+    });
+    const unsubscribeUserSymbols = subscribeToUserSymbolsChanged(() => {
+      void load().catch(() => undefined);
+    });
+
+    return () => {
+      active = false;
+      unsubscribeData();
+      unsubscribeUserSymbols();
+    };
+  }, []);
+
+  useEffect(() => {
+    setRecentPage((current) => clampPage(current, recentSymbols.length));
+  }, [recentSymbols.length]);
+
+  useEffect(() => {
+    setWatchlistPage((current) => clampPage(current, watchlist.length));
+  }, [watchlist.length]);
+
+  async function handleToggleWatch(symbolId: string, isWatched: boolean) {
+    try {
+      if (isWatched) {
+        await removeWatchSymbol(symbolId);
+        return;
+      }
+
+      await addWatchSymbol(symbolId);
+    } catch (error) {
+      console.error("Failed to toggle watch symbol from home page.", error);
+    }
+  }
+
+  const recentTotalPages = getTotalPages(recentSymbols.length);
+  const watchlistTotalPages = getTotalPages(watchlist.length);
+  const visibleRecentSymbols = paginateItems(recentSymbols, recentPage);
+  const visibleWatchlist = paginateItems(watchlist, watchlistPage);
+
   return (
     <section className="flex flex-col gap-8">
       <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr] lg:items-stretch">
@@ -153,7 +210,10 @@ export function HomePage() {
             <Link
               className="flex min-h-44 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 transition hover:border-teal-700"
               key={candidate.code}
-              to={`/stocks/${candidate.code}`}
+              to={buildStockDetailHref({
+                code: candidate.code,
+                region: candidate.region,
+              })}
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -216,46 +276,142 @@ export function HomePage() {
         </section>
       </div>
 
-      <section className="flex flex-col gap-4" aria-labelledby="watchlist-heading">
-        <SectionHeader
-          description="気になる銘柄の動きだけを短く確認します。"
-          title="ウォッチ銘柄変化"
-          titleId="watchlist-heading"
-        />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="flex flex-col gap-4" aria-labelledby="home-recent-heading">
+          <SectionHeader
+            description="銘柄詳細を開いた順に、次に見返したい銘柄を残します。"
+            title="最近見た銘柄"
+            titleId="home-recent-heading"
+          />
 
-        <div className="grid gap-3 md:grid-cols-2">
-          {watchChanges.map((watch) => (
-            <Link
-              className="flex min-h-32 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 transition hover:border-teal-700"
-              key={watch.code}
-              to={`/stocks/${watch.code}`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold tracking-normal">{watch.name}</h2>
-                  <p className="mt-1 text-sm text-zinc-600">{watch.code}</p>
-                </div>
-                <span
-                  className={
-                    watch.trend === "up"
-                      ? "rounded-md bg-emerald-50 px-2 py-1 text-sm font-semibold text-emerald-700"
-                      : "rounded-md bg-amber-50 px-2 py-1 text-sm font-semibold text-amber-700"
-                  }
-                >
-                  {watch.trend === "up" ? "上昇" : "調整"}
-                </span>
+          {recentSymbols.length === 0 ? (
+            <EmptyPanel message="まだ最近見た銘柄はありません。" />
+          ) : (
+            <>
+              <div className="grid gap-3">
+                {visibleRecentSymbols.map((item) => (
+                  <HomeUserSymbolCard
+                    item={item}
+                    key={item.symbol.id}
+                    markAsRecent
+                    onToggleWatch={() => {
+                      void handleToggleWatch(item.symbol.id, item.isWatched);
+                    }}
+                  />
+                ))}
               </div>
-              <p className="text-sm leading-6 text-zinc-700">{watch.note}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
+              <PaginationControls
+                currentPage={recentPage}
+                onPageChange={setRecentPage}
+                totalItems={recentSymbols.length}
+                totalPages={recentTotalPages}
+              />
+            </>
+          )}
+        </section>
+
+        <section className="flex flex-col gap-4" aria-labelledby="watchlist-heading">
+          <SectionHeader
+            description="端末間で同期するウォッチ銘柄をここで確認します。"
+            title="ウォッチ銘柄"
+            titleId="watchlist-heading"
+          />
+
+          {watchlist.length === 0 ? (
+            <EmptyPanel message="まだウォッチ銘柄はありません。" />
+          ) : (
+            <>
+              <div className="grid gap-3">
+                {visibleWatchlist.map((item) => (
+                  <HomeUserSymbolCard
+                    item={item}
+                    key={item.symbol.id}
+                    onToggleWatch={() => {
+                      void handleToggleWatch(item.symbol.id, item.isWatched);
+                    }}
+                  />
+                ))}
+              </div>
+              <PaginationControls
+                currentPage={watchlistPage}
+                onPageChange={setWatchlistPage}
+                totalItems={watchlist.length}
+                totalPages={watchlistTotalPages}
+              />
+            </>
+          )}
+        </section>
+      </div>
     </section>
   );
 }
 
 function formatCount(value: number): string {
   return `${new Intl.NumberFormat("ja-JP").format(value)}件`;
+}
+
+function paginateItems(items: UserSymbolListItem[], page: number): UserSymbolListItem[] {
+  const start = (page - 1) * userSymbolPageSize;
+  return items.slice(start, start + userSymbolPageSize);
+}
+
+function getTotalPages(totalItems: number): number {
+  return Math.max(1, Math.ceil(totalItems / userSymbolPageSize));
+}
+
+function clampPage(page: number, totalItems: number): number {
+  return Math.min(page, getTotalPages(totalItems));
+}
+
+function EmptyPanel({ message }: { message: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-zinc-300 bg-white p-5 text-sm leading-6 text-zinc-600">
+      {message}
+    </div>
+  );
+}
+
+function HomeUserSymbolCard({
+  item,
+  markAsRecent = false,
+  onToggleWatch,
+}: {
+  item: UserSymbolListItem;
+  markAsRecent?: boolean;
+  onToggleWatch: () => void;
+}) {
+  return (
+    <div className="rounded-md border border-zinc-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              className="text-lg font-semibold tracking-normal text-zinc-950 hover:text-teal-700"
+              to={buildStockDetailHref({
+                code: item.symbol.code,
+                region: item.symbol.region,
+              })}
+            >
+              {item.symbol.name}
+            </Link>
+            <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
+              {item.symbol.code}
+            </span>
+          </div>
+          <UserSymbolBadges
+            isHeld={item.isHeld}
+            isWatched={item.isWatched}
+            wasRecentlyViewed={markAsRecent}
+          />
+          <p className="text-sm text-zinc-600">
+            {item.symbol.region} / {item.symbol.currency}
+          </p>
+        </div>
+
+        <WatchToggleButton isWatched={item.isWatched} onClick={onToggleWatch} />
+      </div>
+    </div>
+  );
 }
 
 function SectionHeader({

@@ -3,23 +3,27 @@ import type {
   DailyPriceBar,
   ExchangeRateBar,
   PortfolioHolding,
+  RecentSymbolRecord,
   StockPrepSnapshot,
   StoredSyncState,
   StoredStockSymbol,
+  WatchlistSymbolRecord,
 } from "@stock-prep/shared";
 
 import { dummyStockPrepSnapshot } from "../data/seedSnapshot";
 
 export const STOCK_PREP_DB_NAME = "stock-prep-lab";
-export const STOCK_PREP_DB_VERSION = 2;
+export const STOCK_PREP_DB_VERSION = 3;
 
 export const stockPrepStores = {
   cash: "cash",
   dailyPrices: "dailyPrices",
   exchangeRates: "exchangeRates",
   holdings: "holdings",
+  recentSymbols: "recentSymbols",
   syncState: "syncState",
   symbols: "symbols",
+  watchlist: "watchlist",
 } as const;
 
 type StockPrepStoreName = (typeof stockPrepStores)[keyof typeof stockPrepStores];
@@ -31,30 +35,43 @@ export type HoldingsSnapshot = Pick<StockPrepSnapshot, "cashBalances" | "holding
 export type StockPrepDbRepository = {
   clearAllStores: () => Promise<void>;
   close: () => void;
+  deleteWatchlistSymbol: (symbolId: WatchlistSymbolRecord["symbolId"]) => Promise<void>;
   getCashBalance: (currency: CashBalance["currency"]) => Promise<CashBalance | null>;
   getDailyPrice: (id: DailyPriceBar["id"]) => Promise<DailyPriceBar | null>;
   getExchangeRate: (id: ExchangeRateBar["id"]) => Promise<ExchangeRateBar | null>;
   getHolding: (id: PortfolioHolding["id"]) => Promise<PortfolioHolding | null>;
+  getRecentSymbol: (symbolId: RecentSymbolRecord["symbolId"]) => Promise<RecentSymbolRecord | null>;
   getSymbol: (id: StoredStockSymbol["id"]) => Promise<StoredStockSymbol | null>;
   getSyncState: (id: StoredSyncState["id"]) => Promise<StoredSyncState | null>;
   getSymbolByCodeRegion: (
     code: StoredStockSymbol["code"],
     region: StoredStockSymbol["region"],
   ) => Promise<StoredStockSymbol | null>;
+  getWatchlistSymbol: (
+    symbolId: WatchlistSymbolRecord["symbolId"],
+  ) => Promise<WatchlistSymbolRecord | null>;
   listCashBalances: () => Promise<CashBalance[]>;
   listDailyPrices: () => Promise<DailyPriceBar[]>;
   listExchangeRates: () => Promise<ExchangeRateBar[]>;
   listHoldings: () => Promise<PortfolioHolding[]>;
+  listRecentSymbols: () => Promise<RecentSymbolRecord[]>;
   listSymbols: () => Promise<StoredStockSymbol[]>;
+  listWatchlistSymbols: () => Promise<WatchlistSymbolRecord[]>;
   putSyncState: (syncState: StoredSyncState) => Promise<void>;
   putCashBalance: (cashBalance: CashBalance) => Promise<void>;
   putDailyPrice: (price: DailyPriceBar) => Promise<void>;
   putExchangeRate: (rate: ExchangeRateBar) => Promise<void>;
   putHolding: (holding: PortfolioHolding) => Promise<void>;
+  putRecentSymbol: (symbol: RecentSymbolRecord) => Promise<void>;
   putSymbol: (symbol: StoredStockSymbol) => Promise<void>;
+  putWatchlistSymbol: (symbol: WatchlistSymbolRecord) => Promise<void>;
   replaceHoldingsSnapshot: (snapshot: HoldingsSnapshot) => Promise<void>;
   replaceMarketDataSnapshot: (snapshot: MarketDataSnapshot) => Promise<void>;
   replaceSymbolsSnapshot: (symbols: StoredStockSymbol[]) => Promise<void>;
+  replaceUserSymbolsSnapshot: (snapshot: {
+    recentSymbols: RecentSymbolRecord[];
+    watchlist: WatchlistSymbolRecord[];
+  }) => Promise<void>;
 };
 
 export function openStockPrepDb({
@@ -90,28 +107,38 @@ export function createStockPrepDbRepository(db: IDBDatabase): StockPrepDbReposit
   return {
     clearAllStores: () => clearAllStores(db),
     close: () => db.close(),
+    deleteWatchlistSymbol: (symbolId) => deleteByKey(db, stockPrepStores.watchlist, symbolId),
     getCashBalance: (currency) => getByKey<CashBalance>(db, stockPrepStores.cash, currency),
     getDailyPrice: (id) => getByKey<DailyPriceBar>(db, stockPrepStores.dailyPrices, id),
     getExchangeRate: (id) => getByKey<ExchangeRateBar>(db, stockPrepStores.exchangeRates, id),
     getHolding: (id) => getByKey<PortfolioHolding>(db, stockPrepStores.holdings, id),
+    getRecentSymbol: (symbolId) =>
+      getByKey<RecentSymbolRecord>(db, stockPrepStores.recentSymbols, symbolId),
     getSymbol: (id) => getByKey<StoredStockSymbol>(db, stockPrepStores.symbols, id),
     getSyncState: (id) => getByKey<StoredSyncState>(db, stockPrepStores.syncState, id),
     getSymbolByCodeRegion: (code, region) =>
       getByIndex<StoredStockSymbol>(db, stockPrepStores.symbols, "by_code_region", [code, region]),
+    getWatchlistSymbol: (symbolId) =>
+      getByKey<WatchlistSymbolRecord>(db, stockPrepStores.watchlist, symbolId),
     listCashBalances: () => getAll<CashBalance>(db, stockPrepStores.cash),
     listDailyPrices: () => getAll<DailyPriceBar>(db, stockPrepStores.dailyPrices),
     listExchangeRates: () => getAll<ExchangeRateBar>(db, stockPrepStores.exchangeRates),
     listHoldings: () => getAll<PortfolioHolding>(db, stockPrepStores.holdings),
+    listRecentSymbols: () => getAll<RecentSymbolRecord>(db, stockPrepStores.recentSymbols),
     listSymbols: () => getAll<StoredStockSymbol>(db, stockPrepStores.symbols),
+    listWatchlistSymbols: () => getAll<WatchlistSymbolRecord>(db, stockPrepStores.watchlist),
     putSyncState: (syncState) => putValue(db, stockPrepStores.syncState, syncState),
     putCashBalance: (cashBalance) => putValue(db, stockPrepStores.cash, cashBalance),
     putDailyPrice: (price) => putValue(db, stockPrepStores.dailyPrices, price),
     putExchangeRate: (rate) => putValue(db, stockPrepStores.exchangeRates, rate),
     putHolding: (holding) => putValue(db, stockPrepStores.holdings, holding),
+    putRecentSymbol: (symbol) => putValue(db, stockPrepStores.recentSymbols, symbol),
     putSymbol: (symbol) => putValue(db, stockPrepStores.symbols, symbol),
+    putWatchlistSymbol: (symbol) => putValue(db, stockPrepStores.watchlist, symbol),
     replaceHoldingsSnapshot: (snapshot) => replaceHoldingsSnapshot(db, snapshot),
     replaceMarketDataSnapshot: (snapshot) => replaceMarketDataSnapshot(db, snapshot),
     replaceSymbolsSnapshot: (symbols) => replaceSymbolsSnapshot(db, symbols),
+    replaceUserSymbolsSnapshot: (snapshot) => replaceUserSymbolsSnapshot(db, snapshot),
   };
 }
 
@@ -193,6 +220,14 @@ function migrateStockPrepDb(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains(stockPrepStores.syncState)) {
     db.createObjectStore(stockPrepStores.syncState, { keyPath: "id" });
   }
+
+  if (!db.objectStoreNames.contains(stockPrepStores.recentSymbols)) {
+    db.createObjectStore(stockPrepStores.recentSymbols, { keyPath: "symbolId" });
+  }
+
+  if (!db.objectStoreNames.contains(stockPrepStores.watchlist)) {
+    db.createObjectStore(stockPrepStores.watchlist, { keyPath: "symbolId" });
+  }
 }
 
 async function clearAllStores(db: IDBDatabase): Promise<void> {
@@ -269,6 +304,33 @@ async function replaceSymbolsSnapshot(
   await done;
 }
 
+async function replaceUserSymbolsSnapshot(
+  db: IDBDatabase,
+  snapshot: {
+    recentSymbols: RecentSymbolRecord[];
+    watchlist: WatchlistSymbolRecord[];
+  },
+): Promise<void> {
+  const transaction = db.transaction(
+    [stockPrepStores.recentSymbols, stockPrepStores.watchlist],
+    "readwrite",
+  );
+  const done = transactionDone(transaction);
+
+  transaction.objectStore(stockPrepStores.recentSymbols).clear();
+  transaction.objectStore(stockPrepStores.watchlist).clear();
+
+  for (const recentSymbol of snapshot.recentSymbols) {
+    transaction.objectStore(stockPrepStores.recentSymbols).put(recentSymbol);
+  }
+
+  for (const watchlistSymbol of snapshot.watchlist) {
+    transaction.objectStore(stockPrepStores.watchlist).put(watchlistSymbol);
+  }
+
+  await done;
+}
+
 async function getAll<T>(db: IDBDatabase, storeName: StockPrepStoreName): Promise<T[]> {
   const transaction = db.transaction(storeName, "readonly");
   const done = transactionDone(transaction);
@@ -312,6 +374,17 @@ async function putValue<T>(
   const transaction = db.transaction(storeName, "readwrite");
   const done = transactionDone(transaction);
   transaction.objectStore(storeName).put(value);
+  await done;
+}
+
+async function deleteByKey(
+  db: IDBDatabase,
+  storeName: StockPrepStoreName,
+  key: IDBValidKey,
+): Promise<void> {
+  const transaction = db.transaction(storeName, "readwrite");
+  const done = transactionDone(transaction);
+  transaction.objectStore(storeName).delete(key);
   await done;
 }
 

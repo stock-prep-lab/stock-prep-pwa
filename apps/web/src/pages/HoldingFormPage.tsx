@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { UserSymbolBadges } from "../components/UserSymbolBadges";
+import { WatchToggleButton } from "../components/WatchToggleButton";
 import type { HoldingFormTarget } from "../data/portfolioRebalanceData";
 import { formatPriceCurrency } from "../data/priceFormat";
 import { buildStockDetailHref } from "../data/stockDetailHref";
@@ -9,6 +11,12 @@ import {
   saveHoldingToIndexedDb,
 } from "../data/portfolioRebalanceData";
 import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
+import {
+  addWatchSymbol,
+  loadUserSymbolFlags,
+  removeWatchSymbol,
+} from "../data/userSymbolsData";
+import { subscribeToUserSymbolsChanged } from "../data/userSymbolsEvents";
 
 type HoldingFormState =
   | {
@@ -34,13 +42,20 @@ export function HoldingFormPage() {
   const [averagePrice, setAveragePrice] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [symbolFlags, setSymbolFlags] = useState({
+    isHeld: false,
+    isWatched: false,
+    wasRecentlyViewed: false,
+  });
 
   useEffect(() => {
     let isMounted = true;
 
     const loadTarget = () => {
-      void loadHoldingFormTargetFromIndexedDb(symbolCode ?? "")
-        .then((target) => {
+      void Promise.all([
+        loadHoldingFormTargetFromIndexedDb(symbolCode ?? ""),
+      ])
+        .then(async ([target]) => {
           if (!isMounted) {
             return;
           }
@@ -56,6 +71,12 @@ export function HoldingFormPage() {
               target.latestPrice?.close.toString() ??
               "",
           );
+          const nextFlags = await loadUserSymbolFlags(target.symbol.id);
+          if (!isMounted) {
+            return;
+          }
+
+          setSymbolFlags(nextFlags);
           setFormState({ status: "loaded", target });
         })
         .catch((error: unknown) => {
@@ -70,13 +91,32 @@ export function HoldingFormPage() {
     };
 
     loadTarget();
-    const unsubscribe = subscribeToStockPrepDataChanged(loadTarget);
+    const unsubscribeData = subscribeToStockPrepDataChanged(loadTarget);
+    const unsubscribeUserSymbols = subscribeToUserSymbolsChanged(loadTarget);
 
     return () => {
       isMounted = false;
-      unsubscribe();
+      unsubscribeData();
+      unsubscribeUserSymbols();
     };
   }, [symbolCode]);
+
+  async function handleToggleWatch() {
+    if (formState.status !== "loaded") {
+      return;
+    }
+
+    try {
+      if (symbolFlags.isWatched) {
+        await removeWatchSymbol(formState.target.symbol.id);
+        return;
+      }
+
+      await addWatchSymbol(formState.target.symbol.id);
+    } catch (error) {
+      console.error("Failed to toggle watch symbol from holding form.", error);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -157,6 +197,13 @@ export function HoldingFormPage() {
                     {formState.target.symbol.code}
                   </span>
                 </div>
+                <div className="mt-3">
+                  <UserSymbolBadges
+                    isHeld={symbolFlags.isHeld}
+                    isWatched={symbolFlags.isWatched}
+                    wasRecentlyViewed={symbolFlags.wasRecentlyViewed}
+                  />
+                </div>
                 <p className="mt-2 text-sm text-zinc-600">
                   {formState.target.symbol.region} / {formState.target.symbol.sourceSymbol}
                 </p>
@@ -186,6 +233,14 @@ export function HoldingFormPage() {
                       : "未登録"
                   }
                 />
+                <div className="pt-2">
+                  <WatchToggleButton
+                    isWatched={symbolFlags.isWatched}
+                    onClick={() => {
+                      void handleToggleWatch();
+                    }}
+                  />
+                </div>
               </div>
             </Link>
           </section>

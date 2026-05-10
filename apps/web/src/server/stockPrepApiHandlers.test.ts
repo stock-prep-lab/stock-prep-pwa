@@ -2,13 +2,17 @@ import JSZip from "jszip";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  handleAddWatchlistSymbolRequest,
   handleCreateImportUploadSessionRequest,
   handleDatasetVersionRequest,
   handleGetHoldingsRequest,
+  handleGetUserSymbolsRequest,
   handleImportMarketZipRequest,
   handleLatestSummaryRequest,
   handleListImportJobsRequest,
   handleMarketDataRequest,
+  handleRecordRecentSymbolRequest,
+  handleRemoveWatchlistSymbolRequest,
   handleStockDetailRequest,
   handleUpsertHoldingRequest,
   resetStockPrepApiServerState,
@@ -99,6 +103,23 @@ describe("stockPrepApiHandlers", () => {
     expect(payload.holdings).toHaveLength(1);
     expect(payload.cashBalances).toHaveLength(1);
     expect(payload.updatedAt).toMatch(/^2026-04-17/);
+  });
+
+  it("records recent symbols and manages watchlist entries", async () => {
+    await handleRecordRecentSymbolRequest({ symbolId: "jp-7203" });
+    await handleAddWatchlistSymbolRequest({ symbolId: "jp-9432" });
+
+    let payload = await handleGetUserSymbolsRequest();
+
+    expect(payload.recentSymbols[0]).toMatchObject({
+      symbolId: "jp-7203",
+    });
+    expect(payload.watchlist[0]).toMatchObject({
+      symbolId: "jp-9432",
+    });
+
+    payload = await handleRemoveWatchlistSymbolRequest("jp-9432");
+    expect(payload.watchlist).toEqual([]);
   });
 
   it("returns stock detail payload with symbol history and holding", async () => {
