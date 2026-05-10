@@ -47,6 +47,44 @@ const toggleSections: Array<{
   },
 ];
 
+const legendSections: Array<{
+  items: Array<{
+    colorClass: string;
+    id?: keyof StockDetailChartVisibility;
+    label: string;
+  }>;
+  title: string;
+}> = [
+  {
+    items: [
+      { colorClass: "bg-teal-700", label: "ローソク足(上昇)" },
+      { colorClass: "bg-amber-600", label: "ローソク足(下落)" },
+      { colorClass: "bg-zinc-500", label: "出来高" },
+    ],
+    title: "基本表示",
+  },
+  {
+    items: [
+      { colorClass: "bg-teal-700", id: "ma25", label: "25MA" },
+      { colorClass: "bg-amber-600", id: "ma75", label: "75MA" },
+      { colorClass: "bg-blue-600", id: "ichimoku", label: "一目均衡表" },
+      { colorClass: "bg-indigo-500", id: "bollinger", label: "ボリンジャー" },
+      { colorClass: "bg-blue-600", id: "macd", label: "MACD" },
+      { colorClass: "bg-zinc-500", id: "recentHigh", label: "直近高値ライン" },
+      { colorClass: "bg-blue-500", id: "buyPrice", label: "買値ライン" },
+      { colorClass: "bg-red-600", id: "stopLoss", label: "損切りライン" },
+    ],
+    title: "トレンド分析",
+  },
+  {
+    items: [
+      { colorClass: "bg-fuchsia-600", id: "rsi", label: "RSI(14)" },
+      { colorClass: "bg-emerald-700", id: "stochastic", label: "ストキャスティクス" },
+    ],
+    title: "オシレーター分析",
+  },
+];
+
 const trendSignalHelpMap: Record<
   string,
   {
@@ -315,6 +353,8 @@ function LoadedStockDetail({
             <StockDetailChart chartData={detail.chartData} visibility={chartVisibility} />
 
             <div className="mt-4 grid gap-4 border-t border-zinc-200 pt-4">
+              <ChartLegend detail={detail} visibility={chartVisibility} />
+
               {toggleSections.map((section) => (
                 <div className="grid gap-3" key={section.title}>
                   <p className="text-sm font-medium text-zinc-600">{section.title}</p>
@@ -461,6 +501,57 @@ function AnalysisSection({
             }}
             signal={signal}
           />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChartLegend({
+  detail,
+  visibility,
+}: {
+  detail: StockDetailPageData;
+  visibility: StockDetailChartVisibility;
+}) {
+  const activeSections = legendSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (!item.id) {
+          return true;
+        }
+
+        if ((item.id === "buyPrice" || item.id === "stopLoss") && detail.holding === null) {
+          return false;
+        }
+
+        return visibility[item.id];
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  return (
+    <div className="grid gap-3">
+      <p className="text-sm font-medium text-zinc-600">凡例</p>
+      <div className="grid gap-3">
+        {activeSections.map((section) => (
+          <div className="grid gap-2" key={section.title}>
+            <p className="text-xs font-medium uppercase tracking-normal text-zinc-500">
+              {section.title}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {section.items.map((item) => (
+                <span
+                  className="inline-flex min-h-9 items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm text-zinc-700"
+                  key={`${section.title}-${item.label}`}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full ${item.colorClass}`} />
+                  <span>{item.label}</span>
+                </span>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </div>
