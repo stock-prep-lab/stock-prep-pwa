@@ -181,6 +181,39 @@ export async function importBulkScopeFromZip({
   scopeId: ImportScopeId;
   zipBytes: Uint8Array;
 }): Promise<ScopeImportResult> {
+  const scopeResult = await importBulkScopePayloadFromZip({
+    generatedAt,
+    referenceSymbols,
+    scopeId,
+    zipBytes,
+  });
+  const marketData = mergeMarketDataScope({
+    currentMarketData,
+    generatedAt,
+    importedDailyPrices: scopeResult.marketData.dailyPrices,
+    importedExchangeRates: scopeResult.marketData.exchangeRates,
+    importedSymbols: scopeResult.marketData.symbols,
+    scopeId,
+  });
+
+  return {
+    ...scopeResult,
+    marketData,
+    screening: await createScreeningSnapshot({ generatedAt, marketData }),
+  };
+}
+
+export async function importBulkScopePayloadFromZip({
+  generatedAt = new Date().toISOString(),
+  referenceSymbols = [],
+  scopeId,
+  zipBytes,
+}: {
+  generatedAt?: string;
+  referenceSymbols?: StoredStockSymbol[];
+  scopeId: ImportScopeId;
+  zipBytes: Uint8Array;
+}): Promise<ScopeImportResult> {
   const zip = await JSZip.loadAsync(zipBytes);
   const txtEntries = Object.values(zip.files)
     .filter((entry) => !entry.dir && entry.name.toLowerCase().endsWith(".txt"))
@@ -193,18 +226,21 @@ export async function importBulkScopeFromZip({
       throw new Error("world ZIP から対象為替ペアを見つけられませんでした。");
     }
 
-    const marketData = mergeMarketDataScope({
-      currentMarketData,
+    const marketData: MarketDataPayload = {
+      dailyPrices: [],
+      datasetVersion: `market-data-${generatedAt}`,
+      exchangeRates,
       generatedAt,
-      importedDailyPrices: [],
-      importedExchangeRates: exchangeRates,
-      importedSymbols: [],
-      scopeId,
-    });
+      symbols: [],
+    };
 
     return {
       marketData,
-      screening: await createScreeningSnapshot({ generatedAt, marketData }),
+      screening: {
+        candidateCount: 0,
+        generatedAt,
+        topCandidates: [],
+      },
       summary: {
         dailyPriceCount: 0,
         exchangeRateCount: exchangeRates.length,
@@ -251,14 +287,13 @@ export async function importBulkScopeFromZip({
     histories: normalized.histories,
     symbols: normalized.symbols,
   });
-  const marketData = mergeMarketDataScope({
-    currentMarketData,
+  const marketData: MarketDataPayload = {
+    dailyPrices: normalized.histories.flatMap((history) => history.bars).sort(compareDailyPriceBars),
+    datasetVersion: `market-data-${generatedAt}`,
+    exchangeRates: [],
     generatedAt,
-    importedDailyPrices: normalized.histories.flatMap((history) => history.bars),
-    importedExchangeRates: [],
-    importedSymbols: importedSymbols.map(stripImportedSymbolSnapshot),
-    scopeId,
-  });
+    symbols: importedSymbols.map(stripImportedSymbolSnapshot).sort(compareSymbols),
+  };
 
   return {
     marketData,

@@ -1,4 +1,5 @@
 import type { ImportJobRecord, MarketDataPayload } from "@stock-prep/shared";
+import type { LatestSummaryPayload } from "@stock-prep/shared";
 
 import {
   claimNextQueuedImportJob,
@@ -14,11 +15,17 @@ import {
 import {
   buildLatestSummaryPayload,
   createEmptyMarketDataPayload,
-  importBulkScopeFromZip,
+  importBulkScopePayloadFromZip,
   type StockPrepMarketDataManifest,
 } from "./stockPrepImport.js";
 import { forEachWithConcurrency } from "./asyncConcurrency.js";
-import { loadPersistedMarketData, planPersistedMarketData } from "./stockPrepMarketDataStorage.js";
+import {
+  buildScopeArtifactReference,
+  loadPersistedScopeMarketData,
+  loadPersistedScopedRootArtifact,
+  mergeLatestSummaryPayloads,
+  planPersistedScopeMarketData,
+} from "./stockPrepMarketDataStorage.js";
 import {
   createR2Client,
   deleteObject,
@@ -40,14 +47,21 @@ type StockPrepImportWorkerLogger = {
 
 type PersistedCurrentArtifacts = {
   manifest: StockPrepMarketDataManifest | null;
-  marketData: MarketDataPayload;
+  scopeArtifactReferences: Partial<
+    Record<
+      QueuedImportJob["scopeId"],
+      ReturnType<typeof buildScopeArtifactReference>
+    >
+  >;
+  scopeLatestSummaries: Partial<Record<QueuedImportJob["scopeId"], LatestSummaryPayload>>;
+  scopeMarketData: MarketDataPayload;
 };
 
 export type StockPrepImportWorkerStore = {
   claimNextQueuedJob(): Promise<QueuedImportJob | null>;
   deleteCurrentArtifacts(scopeId: QueuedImportJob["scopeId"]): Promise<void>;
   deleteRawZip(rawObjectKey: string): Promise<void>;
-  loadCurrentArtifacts(): Promise<PersistedCurrentArtifacts>;
+  loadCurrentArtifacts(scopeId: QueuedImportJob["scopeId"]): Promise<PersistedCurrentArtifacts>;
   loadRawZip(rawObjectKey: string): Promise<Uint8Array>;
   markDatasetStateFailed(): Promise<void>;
   markDatasetStateImporting(): Promise<void>;
@@ -56,7 +70,10 @@ export type StockPrepImportWorkerStore = {
   persistCurrentArtifacts(args: {
     generatedAt: string;
     manifest: StockPrepMarketDataManifest;
+    latestSummary: LatestSummaryPayload;
     marketData: MarketDataPayload;
+    scopeId: QueuedImportJob["scopeId"];
+    scopeArtifactReferences: PersistedCurrentArtifacts["scopeArtifactReferences"];
   }): Promise<void>;
   touchJobHeartbeat(jobId: string): Promise<void>;
 };
@@ -138,7 +155,7 @@ export async function processClaimedImportJob({
     stage = "load:current-artifacts-and-zip";
     logger.info(`import worker: job=${job.id} scope=${job.scopeId} current artifact と raw ZIP を読み込みます`);
     const [currentArtifacts, zipBytes] = await Promise.all([
-      store.loadCurrentArtifacts(),
+      store.loadCurrentArtifacts(job.scopeId),
       store.loadRawZip(job.rawObjectKey),
     ]);
     logger.info(
@@ -147,16 +164,26 @@ export async function processClaimedImportJob({
     const generatedAt = now();
     stage = "normalize:zip";
     logger.info(`import worker: job=${job.id} scope=${job.scopeId} ZIP を正規化します`);
-    const importResult = await importBulkScopeFromZip({
-      currentMarketData: currentArtifacts.marketData,
+    const importResult = await importBulkScopePayloadFromZip({
       generatedAt,
-      referenceSymbols: currentArtifacts.marketData.symbols,
+      referenceSymbols: currentArtifacts.scopeMarketData.symbols,
       scopeId: job.scopeId,
       zipBytes,
     });
     logger.info(
       `import worker: job=${job.id} scope=${job.scopeId} 正規化完了 symbols=${importResult.summary.symbolCount} dailyPrices=${importResult.summary.dailyPriceCount} exchangeRates=${importResult.summary.exchangeRateCount}`,
     );
+    const latestSummary = mergeLatestSummaryPayloads({
+      datasetVersion: importResult.marketData.datasetVersion,
+      generatedAt,
+      summaries: [
+        ...Object.entries(currentArtifacts.scopeLatestSummaries)
+          .filter(([scope]) => scope !== job.scopeId)
+          .map(([, summary]) => summary)
+          .filter((summary): summary is LatestSummaryPayload => summary !== undefined),
+        buildLatestSummaryPayload(importResult.marketData),
+      ],
+    });
     const manifest: StockPrepMarketDataManifest = {
       datasetVersion: importResult.marketData.datasetVersion,
       generatedAt,
@@ -176,8 +203,11 @@ export async function processClaimedImportJob({
     logger.info(`import worker: job=${job.id} scope=${job.scopeId} 新しい artifact を保存します`);
     await store.persistCurrentArtifacts({
       generatedAt,
+      latestSummary,
       manifest,
       marketData: importResult.marketData,
+      scopeId: job.scopeId,
+      scopeArtifactReferences: currentArtifacts.scopeArtifactReferences,
     });
 
     const completedJob: ImportJobRecord = {
@@ -270,14 +300,16 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
         r2,
       });
     },
-    async loadCurrentArtifacts() {
+    async loadCurrentArtifacts(scopeId) {
       try {
         const latestState = await loadLatestDatasetState({ supabase });
 
         if (!latestState) {
           return {
             manifest: null,
-            marketData: createEmptyMarketDataPayload(),
+            scopeArtifactReferences: {},
+            scopeLatestSummaries: {},
+            scopeMarketData: createEmptyMarketDataPayload(),
           };
         }
 
@@ -285,21 +317,46 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
           key: latestState.latest_manifest_key,
           r2,
         });
-        const persisted = await loadPersistedMarketData({
+        const rootArtifact = await loadPersistedScopedRootArtifact({
           key: manifest.marketDataKey,
           readJson: (key) => getJsonObject({ key, r2 }),
         });
-        currentArtifactKeysByScope = persisted.artifactKeysByScope;
+        const persistedScope = await loadPersistedScopeMarketData({
+          key: manifest.marketDataKey,
+          readJson: (key) => getJsonObject({ key, r2 }),
+          scopeId,
+        });
+        currentArtifactKeysByScope = {
+          ...currentArtifactKeysByScope,
+          [scopeId]: persistedScope.artifactKeys,
+        };
+        const scopeLatestSummaries = rootArtifact
+          ? Object.fromEntries(
+              await Promise.all(
+                Object.values(rootArtifact.scopeArtifacts).map(async (artifactRef) => [
+                  artifactRef.scopeId,
+                  await getJsonObject<LatestSummaryPayload>({
+                    key: artifactRef.latestSummaryKey,
+                    r2,
+                  }),
+                ]),
+              ),
+            ) as Partial<Record<QueuedImportJob["scopeId"], LatestSummaryPayload>>
+          : {};
 
         return {
           manifest,
-          marketData: persisted.marketData,
+          scopeArtifactReferences: rootArtifact?.scopeArtifacts ?? {},
+          scopeLatestSummaries,
+          scopeMarketData: persistedScope.marketData,
         };
       } catch {
         currentArtifactKeysByScope = {};
         return {
           manifest: null,
-          marketData: createEmptyMarketDataPayload(),
+          scopeArtifactReferences: {},
+          scopeLatestSummaries: {},
+          scopeMarketData: createEmptyMarketDataPayload(),
         };
       }
     },
@@ -333,11 +390,23 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
         supabase,
       });
     },
-    async persistCurrentArtifacts({ generatedAt, manifest, marketData }) {
-      const persisted = planPersistedMarketData({
+    async persistCurrentArtifacts({
+      generatedAt,
+      latestSummary,
+      manifest,
+      marketData,
+      scopeId,
+      scopeArtifactReferences,
+    }) {
+      const persisted = planPersistedScopeMarketData({
         baseKey: currentMarketDataKey,
         marketData,
+        scopeId,
       });
+
+      if (!persisted) {
+        throw new Error(`scope artifact plan could not be created: ${scopeId}`);
+      }
 
       for (const object of persisted.objects) {
         await putJsonObject({
@@ -348,7 +417,23 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
       }
 
       await putJsonObject({
-        body: buildLatestSummaryPayload(marketData),
+        body: {
+          datasetVersion: marketData.datasetVersion,
+          format: "scoped-v1",
+          generatedAt: marketData.generatedAt,
+          scopeArtifacts: {
+            ...scopeArtifactReferences,
+            [scopeId]: buildScopeArtifactReference({
+              baseKey: currentMarketDataKey,
+              scopeId,
+            }),
+          },
+        },
+        key: currentMarketDataKey,
+        r2,
+      });
+      await putJsonObject({
+        body: latestSummary,
         key: currentLatestSummaryKey,
         r2,
       });
@@ -365,7 +450,10 @@ export function createRemoteStockPrepImportWorkerStore(): StockPrepImportWorkerS
         supabase,
         version: marketData.datasetVersion,
       });
-      currentArtifactKeysByScope = persisted.artifactKeysByScope;
+      currentArtifactKeysByScope = {
+        ...currentArtifactKeysByScope,
+        [scopeId]: persisted.artifactKeys,
+      };
     },
     async touchJobHeartbeat(jobId) {
       await touchImportJobHeartbeat({

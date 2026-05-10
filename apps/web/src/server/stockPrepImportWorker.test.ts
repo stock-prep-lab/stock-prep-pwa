@@ -201,7 +201,9 @@ function createFakeWorkerStore({
     async loadCurrentArtifacts() {
       return {
         manifest: null,
-        marketData: currentMarketData,
+        scopeArtifactReferences: {},
+        scopeLatestSummaries: {},
+        scopeMarketData: currentMarketData,
       };
     },
     async loadRawZip(rawObjectKey) {
