@@ -2,13 +2,18 @@ import JSZip from "jszip";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  handleAddWatchlistSymbolRequest,
   handleCreateImportUploadSessionRequest,
   handleDatasetVersionRequest,
   handleGetHoldingsRequest,
+  handleGetUserSymbolsRequest,
   handleImportMarketZipRequest,
   handleLatestSummaryRequest,
   handleListImportJobsRequest,
   handleMarketDataRequest,
+  handleDeleteHoldingRequest,
+  handleRecordRecentSymbolRequest,
+  handleRemoveWatchlistSymbolRequest,
   handleStockDetailRequest,
   handleUpsertHoldingRequest,
   resetStockPrepApiServerState,
@@ -101,6 +106,23 @@ describe("stockPrepApiHandlers", () => {
     expect(payload.updatedAt).toMatch(/^2026-04-17/);
   });
 
+  it("records recent symbols and manages watchlist entries", async () => {
+    await handleRecordRecentSymbolRequest({ symbolId: "jp-7203" });
+    await handleAddWatchlistSymbolRequest({ symbolId: "jp-9432" });
+
+    let payload = await handleGetUserSymbolsRequest();
+
+    expect(payload.recentSymbols[0]).toMatchObject({
+      symbolId: "jp-7203",
+    });
+    expect(payload.watchlist[0]).toMatchObject({
+      symbolId: "jp-9432",
+    });
+
+    payload = await handleRemoveWatchlistSymbolRequest("jp-9432");
+    expect(payload.watchlist).toEqual([]);
+  });
+
   it("returns stock detail payload with symbol history and holding", async () => {
     const payload = await handleStockDetailRequest({
       region: "JP",
@@ -134,6 +156,22 @@ describe("stockPrepApiHandlers", () => {
       symbolId: "jp-9432",
     });
     expect(payload.updatedAt).not.toBe("2026-04-17T15:00:00+09:00");
+  });
+
+  it("deletes a holding and returns the updated holdings payload", async () => {
+    const payload = await handleDeleteHoldingRequest("jp-7203");
+
+    expect(payload.holdings).toEqual([]);
+  });
+
+  it("rejects watchlist additions beyond the max count", async () => {
+    for (let index = 0; index < 50; index += 1) {
+      await handleAddWatchlistSymbolRequest({ symbolId: `watch-${index}` });
+    }
+
+    await expect(
+      handleAddWatchlistSymbolRequest({ symbolId: "watch-over-limit" }),
+    ).rejects.toThrow("ウォッチ銘柄は最大 50 件までです。");
   });
 
   it("imports a JP ZIP and exposes the resulting import job state", async () => {

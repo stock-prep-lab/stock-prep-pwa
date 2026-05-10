@@ -8,9 +8,12 @@ import type {
   ImportUploadSessionPayload,
   LatestSummaryPayload,
   MarketDataPayload,
+  RecordRecentSymbolRequest,
   StockDetailPayload,
   StockDetailRequest,
+  UpsertWatchlistSymbolRequest,
   UpsertHoldingRequest,
+  UserSymbolsPayload,
 } from "@stock-prep/shared";
 
 import { getStockPrepServerBackend, resetStockPrepServerBackendState } from "./stockPrepBackend.js";
@@ -41,10 +44,34 @@ export async function handleGetHoldingsRequest(): Promise<HoldingsPayload> {
   return getStockPrepServerBackend().getHoldingsPayload();
 }
 
+export async function handleGetUserSymbolsRequest(): Promise<UserSymbolsPayload> {
+  return getStockPrepServerBackend().getUserSymbolsPayload();
+}
+
 export async function handleUpsertHoldingRequest(
   request: UpsertHoldingRequest,
 ): Promise<HoldingsPayload> {
   return getStockPrepServerBackend().upsertHolding(request);
+}
+
+export async function handleDeleteHoldingRequest(symbolId: string): Promise<HoldingsPayload> {
+  return getStockPrepServerBackend().removeHolding(symbolId);
+}
+
+export async function handleRecordRecentSymbolRequest(
+  request: RecordRecentSymbolRequest,
+): Promise<UserSymbolsPayload> {
+  return getStockPrepServerBackend().recordRecentSymbol(request);
+}
+
+export async function handleAddWatchlistSymbolRequest(
+  request: UpsertWatchlistSymbolRequest,
+): Promise<UserSymbolsPayload> {
+  return getStockPrepServerBackend().addWatchlistSymbol(request);
+}
+
+export async function handleRemoveWatchlistSymbolRequest(symbolId: string): Promise<UserSymbolsPayload> {
+  return getStockPrepServerBackend().removeWatchlistSymbol(symbolId);
 }
 
 export async function handleListImportJobsRequest(): Promise<ImportJobsPayload> {

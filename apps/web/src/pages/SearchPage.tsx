@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { PaginationControls } from "../components/PaginationControls";
+import { UserSymbolBadges } from "../components/UserSymbolBadges";
+import { WatchToggleButton } from "../components/WatchToggleButton";
+import { buildStockDetailHref } from "../data/stockDetailHref";
 import {
   filterSearchCatalog,
   formatRegionLabel,
@@ -10,6 +14,13 @@ import {
 } from "../data/searchCatalog";
 import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 import { formatPriceNumber } from "../data/priceFormat";
+import {
+  addWatchSymbol,
+  loadUserSymbolsSnapshotFromIndexedDb,
+  removeWatchSymbol,
+  type UserSymbolListItem,
+} from "../data/userSymbolsData";
+import { subscribeToUserSymbolsChanged } from "../data/userSymbolsEvents";
 
 type SearchPageState =
   | {
@@ -17,9 +28,13 @@ type SearchPageState =
     }
   | {
       datasetVersion: string | null;
+      holdingSymbolIds: string[];
       items: SearchCatalogItem[];
       latestSummaryStatus: "ready" | "unavailable";
+      recentSymbols: UserSymbolListItem[];
       status: "ready";
+      watchSymbolIds: string[];
+      watchlist: UserSymbolListItem[];
     }
   | {
       message: string;
@@ -32,12 +47,15 @@ const regionFilters: Array<{ label: string; value: SearchRegionFilter }> = [
   { label: formatRegionLabel("US"), value: "US" },
   { label: formatRegionLabel("HK"), value: "HK" },
 ];
+const userSymbolPageSize = 10;
 
 export function SearchPage() {
   const [draftQuery, setDraftQuery] = useState("");
   const [query, setQuery] = useState("");
   const [regionFilter, setRegionFilter] = useState<SearchRegionFilter>("ALL");
   const [state, setState] = useState<SearchPageState>({ status: "loading" });
+  const [recentPage, setRecentPage] = useState(1);
+  const [watchlistPage, setWatchlistPage] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +66,10 @@ export function SearchPage() {
       }
 
       try {
-        const result = await loadSearchCatalog();
+        const [result, userSymbols] = await Promise.all([
+          loadSearchCatalog(),
+          loadUserSymbolsSnapshotFromIndexedDb(),
+        ]);
 
         if (cancelled) {
           return;
@@ -56,9 +77,13 @@ export function SearchPage() {
 
         setState({
           datasetVersion: result.datasetVersion,
+          holdingSymbolIds: userSymbols.holdingSymbolIds,
           items: result.items,
           latestSummaryStatus: result.latestSummaryStatus,
+          recentSymbols: userSymbols.recentSymbols,
           status: "ready",
+          watchSymbolIds: userSymbols.watchSymbolIds,
+          watchlist: userSymbols.watchlist,
         });
       } catch (error) {
         if (cancelled) {
@@ -73,13 +98,17 @@ export function SearchPage() {
     };
 
     void load();
-    const unsubscribe = subscribeToStockPrepDataChanged(() => {
+    const unsubscribeData = subscribeToStockPrepDataChanged(() => {
+      void load();
+    });
+    const unsubscribeUserSymbols = subscribeToUserSymbolsChanged(() => {
       void load();
     });
 
     return () => {
       cancelled = true;
-      unsubscribe();
+      unsubscribeData();
+      unsubscribeUserSymbols();
     };
   }, []);
 
@@ -93,6 +122,43 @@ export function SearchPage() {
       region: regionFilter,
     });
   }, [query, regionFilter, state]);
+
+  const recentSymbols = state.status === "ready" ? state.recentSymbols : [];
+  const watchlist = state.status === "ready" ? state.watchlist : [];
+  const holdingSymbolIds = useMemo(
+    () => new Set(state.status === "ready" ? state.holdingSymbolIds : []),
+    [state],
+  );
+  const watchSymbolIds = useMemo(
+    () => new Set(state.status === "ready" ? state.watchSymbolIds : []),
+    [state],
+  );
+  const recentTotalPages = getTotalPages(recentSymbols.length);
+  const watchlistTotalPages = getTotalPages(watchlist.length);
+  const visibleRecentSymbols = paginateItems(recentSymbols, recentPage);
+  const visibleWatchlist = paginateItems(watchlist, watchlistPage);
+
+  useEffect(() => {
+    setRecentPage((current) => clampPage(current, recentSymbols.length));
+  }, [recentSymbols.length]);
+
+  useEffect(() => {
+    setWatchlistPage((current) => clampPage(current, watchlist.length));
+  }, [watchlist.length]);
+
+  async function handleToggleWatch(symbolId: string, isWatched: boolean) {
+    try {
+      if (isWatched) {
+        await removeWatchSymbol(symbolId);
+        return;
+      }
+
+      await addWatchSymbol(symbolId);
+    } catch (error) {
+      console.error("Failed to toggle watch symbol from search page.", error);
+      window.alert(error instanceof Error ? error.message : "ウォッチ銘柄を更新できませんでした。");
+    }
+  }
 
   return (
     <section className="flex flex-col gap-8">
@@ -155,20 +221,65 @@ export function SearchPage() {
       <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
         <section className="flex flex-col gap-4" aria-labelledby="recent-stocks-heading">
           <SectionHeader
-            description="最近見た銘柄は、銘柄詳細を開いた後にここへ並べる予定です。"
+            description="銘柄詳細を開いた順に、直近の確認銘柄を表示します。"
             title="最近見た銘柄"
             titleId="recent-stocks-heading"
           />
-          <EmptyPanel message="まだ最近見た銘柄はありません。" />
+          {recentSymbols.length === 0 ? (
+            <EmptyPanel message="まだ最近見た銘柄はありません。" />
+          ) : (
+            <>
+              <div className="grid gap-3">
+                {visibleRecentSymbols.map((item) => (
+                  <UserSymbolLinkCard
+                    item={item}
+                    key={item.symbol.id}
+                    markAsRecent
+                    onToggleWatch={() => {
+                      void handleToggleWatch(item.symbol.id, item.isWatched);
+                    }}
+                  />
+                ))}
+              </div>
+              <PaginationControls
+                currentPage={recentPage}
+                onPageChange={setRecentPage}
+                totalItems={recentSymbols.length}
+                totalPages={recentTotalPages}
+              />
+            </>
+          )}
         </section>
 
         <section className="flex flex-col gap-4" aria-labelledby="watch-stocks-heading">
           <SectionHeader
-            description="ウォッチ銘柄は後続 Slice で管理できるようにします。"
+            description="スマホと PC で同期するウォッチ銘柄をここから確認します。"
             title="ウォッチ銘柄"
             titleId="watch-stocks-heading"
           />
-          <EmptyPanel message="まだウォッチ銘柄はありません。" />
+          {watchlist.length === 0 ? (
+            <EmptyPanel message="まだウォッチ銘柄はありません。" />
+          ) : (
+            <>
+              <div className="grid gap-3">
+                {visibleWatchlist.map((item) => (
+                  <UserSymbolLinkCard
+                    item={item}
+                    key={item.symbol.id}
+                    onToggleWatch={() => {
+                      void handleToggleWatch(item.symbol.id, item.isWatched);
+                    }}
+                  />
+                ))}
+              </div>
+              <PaginationControls
+                currentPage={watchlistPage}
+                onPageChange={setWatchlistPage}
+                totalItems={watchlist.length}
+                totalPages={watchlistTotalPages}
+              />
+            </>
+          )}
         </section>
       </div>
 
@@ -220,17 +331,28 @@ export function SearchPage() {
 
                 <div className="divide-y divide-zinc-200">
                   {filteredItems.map((item) => (
-                    <Link
+                    <div
                       className="grid gap-3 p-4 text-zinc-950 transition hover:bg-zinc-50 md:grid-cols-[minmax(0,1.4fr)_5rem_5rem_5rem_7rem] md:items-center"
                       key={item.id}
-                      to={`/stocks/${item.code}?region=${item.region}`}
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-lg font-semibold tracking-normal">{item.name}</h2>
+                          <Link
+                            className="text-lg font-semibold tracking-normal hover:text-teal-700"
+                            to={buildStockDetailHref({
+                              code: item.code,
+                              region: item.region,
+                            })}
+                          >
+                            {item.name}
+                          </Link>
                           <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
                             {item.code}
                           </span>
+                          <UserSymbolBadges
+                            isHeld={holdingSymbolIds.has(item.id)}
+                            isWatched={watchSymbolIds.has(item.id)}
+                          />
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2 text-sm text-zinc-600 md:hidden">
                           <span>{item.marketLabel}</span>
@@ -244,6 +366,24 @@ export function SearchPage() {
                             終値日付: {item.lastCloseDate}
                           </p>
                         ) : null}
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <WatchToggleButton
+                            isWatched={watchSymbolIds.has(item.id)}
+                            onClick={() => {
+                              void handleToggleWatch(item.id, watchSymbolIds.has(item.id));
+                            }}
+                          />
+                          <Link
+                            className="inline-flex min-h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-teal-700 hover:text-teal-700"
+                            to={buildStockDetailHref({
+                              code: item.code,
+                              region: item.region,
+                            })}
+                          >
+                            詳細を見る
+                          </Link>
+                        </div>
                       </div>
 
                       <p className="hidden text-left text-sm text-zinc-700 md:block">
@@ -258,7 +398,7 @@ export function SearchPage() {
                       <p className="text-sm font-semibold text-zinc-950 md:text-right">
                         {formatLastClose(item)}
                       </p>
-                    </Link>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -267,6 +407,49 @@ export function SearchPage() {
         )}
       </section>
     </section>
+  );
+}
+
+function UserSymbolLinkCard({
+  item,
+  markAsRecent = false,
+  onToggleWatch,
+}: {
+  item: UserSymbolListItem;
+  markAsRecent?: boolean;
+  onToggleWatch: () => void;
+}) {
+  return (
+    <div className="rounded-md border border-zinc-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              className="text-lg font-semibold tracking-normal text-zinc-950 hover:text-teal-700"
+              to={buildStockDetailHref({
+                code: item.symbol.code,
+                region: item.symbol.region,
+              })}
+            >
+              {item.symbol.name}
+            </Link>
+            <span className="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
+              {item.symbol.code}
+            </span>
+          </div>
+          <UserSymbolBadges
+            isHeld={item.isHeld}
+            isWatched={item.isWatched}
+            wasRecentlyViewed={markAsRecent}
+          />
+          <p className="text-sm text-zinc-600">
+            {formatRegionLabel(item.symbol.region)} / {item.symbol.currency}
+          </p>
+        </div>
+
+        <WatchToggleButton isWatched={item.isWatched} onClick={onToggleWatch} />
+      </div>
+    </div>
   );
 }
 
@@ -320,4 +503,17 @@ function formatLastClose(item: SearchCatalogItem): string {
   }
 
   return formatPriceNumber(item.lastClose, item.currency);
+}
+
+function paginateItems(items: UserSymbolListItem[], page: number): UserSymbolListItem[] {
+  const start = (page - 1) * userSymbolPageSize;
+  return items.slice(start, start + userSymbolPageSize);
+}
+
+function getTotalPages(totalItems: number): number {
+  return Math.max(1, Math.ceil(totalItems / userSymbolPageSize));
+}
+
+function clampPage(page: number, totalItems: number): number {
+  return Math.min(page, getTotalPages(totalItems));
 }

@@ -5,14 +5,22 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 import {
+  handleAddWatchlistSymbolRequest,
   handleDatasetVersionRequest,
   handleGetHoldingsRequest,
+  handleGetUserSymbolsRequest,
   handleImportMarketZipRequest,
   handleListImportJobsRequest,
   handleMarketDataRequest,
+  handleRecordRecentSymbolRequest,
+  handleRemoveWatchlistSymbolRequest,
   handleUpsertHoldingRequest,
 } from "./src/server/stockPrepApiHandlers";
-import type { UpsertHoldingRequest } from "@stock-prep/shared";
+import type {
+  RecordRecentSymbolRequest,
+  UpsertHoldingRequest,
+  UpsertWatchlistSymbolRequest,
+} from "@stock-prep/shared";
 
 export default defineConfig({
   plugins: [react(), stockPrepApiDevPlugin()],
@@ -51,6 +59,11 @@ function stockPrepApiDevPlugin(): Plugin {
             return;
           }
 
+          if (request.method === "GET" && url.pathname === "/api/user-symbols") {
+            sendJson(response, 200, await handleGetUserSymbolsRequest());
+            return;
+          }
+
           if (request.method === "GET" && url.pathname === "/api/admin/import-jobs") {
             sendJson(response, 200, await handleListImportJobsRequest());
             return;
@@ -59,6 +72,30 @@ function stockPrepApiDevPlugin(): Plugin {
           if (request.method === "PUT" && url.pathname === "/api/holdings") {
             const body = (await readJsonBody(request)) as UpsertHoldingRequest;
             sendJson(response, 200, await handleUpsertHoldingRequest(body));
+            return;
+          }
+
+          if (request.method === "PUT" && url.pathname === "/api/recent-symbols") {
+            const body = (await readJsonBody(request)) as RecordRecentSymbolRequest;
+            sendJson(response, 200, await handleRecordRecentSymbolRequest(body));
+            return;
+          }
+
+          if (request.method === "PUT" && url.pathname === "/api/watchlist") {
+            const body = (await readJsonBody(request)) as UpsertWatchlistSymbolRequest;
+            sendJson(response, 200, await handleAddWatchlistSymbolRequest(body));
+            return;
+          }
+
+          if (request.method === "DELETE" && url.pathname === "/api/watchlist") {
+            const symbolId = url.searchParams.get("symbolId");
+
+            if (!symbolId) {
+              sendJson(response, 400, { error: "symbolId が必要です。" });
+              return;
+            }
+
+            sendJson(response, 200, await handleRemoveWatchlistSymbolRequest(symbolId));
             return;
           }
 

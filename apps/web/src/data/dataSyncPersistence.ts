@@ -4,6 +4,7 @@ import type {
   MarketDataPayload,
   StoredStockSymbol,
   SyncStateId,
+  UserSymbolsPayload,
 } from "@stock-prep/shared";
 
 import { createStockPrepDbRepository, openStockPrepDb } from "../storage/stockPrepDb";
@@ -86,6 +87,25 @@ export async function persistHoldingsPayload(payload: HoldingsPayload): Promise<
     await repository.putSyncState({
       datasetVersion: payload.updatedAt,
       id: "holdings",
+      syncedAt: new Date().toISOString(),
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function persistUserSymbolsPayload(payload: UserSymbolsPayload): Promise<void> {
+  const db = await openStockPrepDb();
+
+  try {
+    const repository = createStockPrepDbRepository(db);
+    await repository.replaceUserSymbolsSnapshot({
+      recentSymbols: payload.recentSymbols,
+      watchlist: payload.watchlist,
+    });
+    await repository.putSyncState({
+      datasetVersion: payload.updatedAt,
+      id: "user-symbols",
       syncedAt: new Date().toISOString(),
     });
   } finally {

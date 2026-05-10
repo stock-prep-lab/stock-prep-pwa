@@ -13,3 +13,17 @@ export function buildStockDetailHref({
 
   return `/stocks/${code}?region=${region}`;
 }
+
+export function buildHoldingFormHref({
+  code,
+  region,
+}: {
+  code: string;
+  region?: RegionCode | null;
+}): string {
+  if (!region) {
+    return `/holdings/${code}/edit`;
+  }
+
+  return `/holdings/${code}/edit?region=${region}`;
+}
