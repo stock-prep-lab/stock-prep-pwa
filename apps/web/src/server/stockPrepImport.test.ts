@@ -75,13 +75,13 @@ describe("stockPrepImport", () => {
 
   it("imports world currency ZIP and inverts JPY-based pairs", async () => {
     const zipBytes = await createZip({
-      "data/daily/world/currencies/major/jpyusd.txt": [
+      "data/daily/world/currencies/major/usdjpy.txt": [
         "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
-        "JPYUSD,D,20260418,000000,0.0065,0.0065,0.0065,0.0065,0,0",
+        "USDJPY,D,20260418,000000,153.846154,153.846154,153.846154,153.846154,0,0",
       ].join("\n"),
-      "data/daily/world/currencies/major/jpyhkd.txt": [
+      "data/daily/world/currencies/other/hkdjpy.txt": [
         "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
-        "JPYHKD,D,20260418,000000,0.1282,0.1282,0.1282,0.128,0,0",
+        "HKDJPY,D,20260418,000000,7.8125,7.8125,7.8125,7.8125,0,0",
       ].join("\n"),
     });
 

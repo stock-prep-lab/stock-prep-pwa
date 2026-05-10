@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import type { HoldingFormTarget } from "../data/portfolioRebalanceData";
+import { formatPriceCurrency } from "../data/priceFormat";
+import { buildStockDetailHref } from "../data/stockDetailHref";
 import {
   loadHoldingFormTargetFromIndexedDb,
   saveHoldingToIndexedDb,
@@ -141,7 +143,10 @@ export function HoldingFormPage() {
 
             <Link
               className="flex min-h-56 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 transition hover:border-teal-700"
-              to={`/stocks/${formState.target.symbol.code}`}
+              to={buildStockDetailHref({
+                code: formState.target.symbol.code,
+                region: formState.target.symbol.region,
+              })}
             >
               <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -260,7 +265,10 @@ export function HoldingFormPage() {
                 </button>
                 <Link
                   className="flex min-h-12 items-center justify-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-medium text-zinc-950 transition hover:border-teal-700 hover:text-teal-700"
-                  to={`/stocks/${formState.target.symbol.code}`}
+                  to={buildStockDetailHref({
+                    code: formState.target.symbol.code,
+                    region: formState.target.symbol.region,
+                  })}
                 >
                   キャンセル
                 </Link>
@@ -316,11 +324,7 @@ function StatusPanel({ message, tone = "info" }: { message: string; tone?: "erro
 }
 
 function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("ja-JP", {
-    currency,
-    maximumFractionDigits: currency === "JPY" ? 0 : 2,
-    style: "currency",
-  }).format(value);
+  return formatPriceCurrency(value, currency);
 }
 
 function formatQuantity(value: number): string {

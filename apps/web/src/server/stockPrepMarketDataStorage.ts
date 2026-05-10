@@ -2,6 +2,7 @@ import type {
   DailyPriceBar,
   ExchangeRateBar,
   ImportScopeId,
+  LatestSummaryPayload,
   MarketDataPayload,
   StoredStockSymbol,
 } from "@stock-prep/shared";
@@ -66,6 +67,12 @@ type ScopeStoragePlan = {
   objects: PersistedJsonObject[];
 };
 
+export type PersistedScopeMarketData = {
+  artifactKeys: string[];
+  marketData: MarketDataPayload;
+  scopeId: ImportScopeId;
+};
+
 export function planPersistedMarketData({
   baseKey,
   chunkSize = defaultDailyPriceChunkSize,
@@ -117,6 +124,126 @@ export function planPersistedMarketData({
         key: baseKey,
       },
     ],
+  };
+}
+
+export function planPersistedScopeMarketData({
+  baseKey,
+  chunkSize = defaultDailyPriceChunkSize,
+  marketData,
+  scopeId,
+}: {
+  baseKey: string;
+  chunkSize?: number;
+  marketData: MarketDataPayload;
+  scopeId: ImportScopeId;
+}): ScopeStoragePlan | null {
+  const rootDir = resolveRootDirectory(baseKey);
+  return createScopeStoragePlanFromPayload({
+    chunkSize,
+    rootDir,
+    scopeId,
+    scopePayload: marketData,
+  });
+}
+
+export async function loadPersistedScopeMarketData({
+  chunkConcurrency = defaultLoadChunkConcurrency,
+  key,
+  readJson,
+  scopeId,
+}: {
+  chunkConcurrency?: number;
+  key: string;
+  readJson: <T>(key: string) => Promise<T>;
+  scopeId: ImportScopeId;
+}): Promise<PersistedScopeMarketData> {
+  const root = await readJson<unknown>(key);
+
+  if (isScopedMarketDataRootArtifact(root)) {
+    const scopeArtifactRef = root.scopeArtifacts[scopeId];
+
+    if (!scopeArtifactRef) {
+      return {
+        artifactKeys: [],
+        marketData: createEmptyScopePayload({
+          datasetVersion: root.datasetVersion,
+          generatedAt: root.generatedAt,
+        }),
+        scopeId,
+      };
+    }
+
+    return loadScopePersistedMarketData({
+      chunkConcurrency,
+      key: scopeArtifactRef.marketDataKey,
+      readJson,
+    });
+  }
+
+  const persisted = await loadPersistedMarketData({
+    chunkConcurrency,
+    key,
+    readJson,
+  });
+
+  return {
+    artifactKeys: persisted.artifactKeysByScope[scopeId] ?? persisted.artifactKeys,
+    marketData: createScopePayload({
+      generatedAt: persisted.marketData.generatedAt,
+      marketData: persisted.marketData,
+      scopeId,
+    }),
+    scopeId,
+  };
+}
+
+export async function loadPersistedScopedRootArtifact({
+  key,
+  readJson,
+}: {
+  key: string;
+  readJson: <T>(key: string) => Promise<T>;
+}): Promise<ScopedMarketDataRootArtifact | null> {
+  const root = await readJson<unknown>(key);
+  return isScopedMarketDataRootArtifact(root) ? root : null;
+}
+
+export function buildScopeArtifactReference({
+  baseKey,
+  scopeId,
+}: {
+  baseKey: string;
+  scopeId: ImportScopeId;
+}): ScopeArtifactReference {
+  const rootDir = resolveRootDirectory(baseKey);
+  const scopeDir = `${rootDir}/${scopeId.toLowerCase()}`;
+
+  return {
+    latestSummaryKey: `${scopeDir}/latest-summary.json`,
+    marketDataKey: `${scopeDir}/market-data.json`,
+    scopeId,
+  };
+}
+
+export function mergeLatestSummaryPayloads({
+  datasetVersion,
+  generatedAt,
+  summaries,
+}: {
+  datasetVersion: string;
+  generatedAt: string;
+  summaries: readonly LatestSummaryPayload[];
+}): LatestSummaryPayload {
+  return {
+    datasetVersion,
+    exchangeRates: summaries
+      .flatMap((summary) => summary.exchangeRates)
+      .sort((left, right) => left.pair.localeCompare(right.pair)),
+    generatedAt,
+    symbols: summaries
+      .flatMap((summary) => summary.symbols)
+      .sort((left, right) => left.region.localeCompare(right.region) || left.code.localeCompare(right.code)),
   };
 }
 
@@ -342,6 +469,22 @@ function createScopePayload({
   };
 }
 
+function createEmptyScopePayload({
+  datasetVersion,
+  generatedAt,
+}: {
+  datasetVersion: string;
+  generatedAt: string;
+}): MarketDataPayload {
+  return {
+    dailyPrices: [],
+    datasetVersion,
+    exchangeRates: [],
+    generatedAt,
+    symbols: [],
+  };
+}
+
 function createScopeStoragePlan({
   chunkSize,
   marketData,
@@ -358,6 +501,26 @@ function createScopeStoragePlan({
     marketData,
     scopeId,
   });
+
+  return createScopeStoragePlanFromPayload({
+    chunkSize,
+    rootDir,
+    scopeId,
+    scopePayload,
+  });
+}
+
+function createScopeStoragePlanFromPayload({
+  chunkSize,
+  rootDir,
+  scopeId,
+  scopePayload,
+}: {
+  chunkSize: number;
+  rootDir: string;
+  scopeId: ImportScopeId;
+  scopePayload: MarketDataPayload;
+}): ScopeStoragePlan | null {
 
   if (
     scopePayload.dailyPrices.length === 0 &&
@@ -511,11 +674,7 @@ async function loadScopePersistedMarketData({
   chunkConcurrency: number;
   key: string;
   readJson: <T>(key: string) => Promise<T>;
-}): Promise<{
-  artifactKeys: string[];
-  marketData: MarketDataPayload;
-  scopeId: ImportScopeId;
-}> {
+}): Promise<PersistedScopeMarketData> {
   const scopeArtifact = await readJson<unknown>(key);
 
   if (!isChunkedScopeMarketDataArtifact(scopeArtifact)) {

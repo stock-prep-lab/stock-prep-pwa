@@ -3,6 +3,8 @@ import type {
   HoldingsPayload,
   LatestSummaryPayload,
   MarketDataPayload,
+  StockDetailPayload,
+  StockDetailRequest,
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
 import { fetchWithApiActivity } from "./apiActivity";
@@ -46,6 +48,28 @@ export async function fetchLatestSummary({
 } = {}): Promise<LatestSummaryPayload> {
   const response = await fetchWithApiActivity("/api/latest-summary", undefined, { activity });
   return readJsonResponse<LatestSummaryPayload>(response);
+}
+
+export async function fetchStockDetail(
+  request: StockDetailRequest,
+  {
+    activity = "foreground",
+  }: {
+    activity?: ApiActivityMode;
+  } = {},
+): Promise<StockDetailPayload> {
+  const query = new URLSearchParams();
+  query.set("code", request.symbolCode);
+
+  if (request.region) {
+    query.set("region", request.region);
+  }
+
+  const response = await fetchWithApiActivity(`/api/stock-detail?${query.toString()}`, undefined, {
+    activity,
+  });
+
+  return readJsonResponse<StockDetailPayload>(response);
 }
 
 export async function fetchHoldings({

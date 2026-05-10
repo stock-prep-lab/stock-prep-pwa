@@ -9,6 +9,7 @@ import {
   handleLatestSummaryRequest,
   handleListImportJobsRequest,
   handleMarketDataRequest,
+  handleStockDetailRequest,
   handleUpsertHoldingRequest,
   resetStockPrepApiServerState,
 } from "./stockPrepApiHandlers";
@@ -98,6 +99,24 @@ describe("stockPrepApiHandlers", () => {
     expect(payload.holdings).toHaveLength(1);
     expect(payload.cashBalances).toHaveLength(1);
     expect(payload.updatedAt).toMatch(/^2026-04-17/);
+  });
+
+  it("returns stock detail payload with symbol history and holding", async () => {
+    const payload = await handleStockDetailRequest({
+      region: "JP",
+      symbolCode: "7203",
+    });
+
+    expect(payload).not.toBeNull();
+    expect(payload?.symbol).toMatchObject({
+      code: "7203",
+      currency: "JPY",
+      region: "JP",
+    });
+    expect(payload?.priceHistory.length).toBeGreaterThan(0);
+    expect(payload?.holding).toMatchObject({
+      symbolId: "jp-7203",
+    });
   });
 
   it("upserts a holding and returns the updated holdings payload", async () => {

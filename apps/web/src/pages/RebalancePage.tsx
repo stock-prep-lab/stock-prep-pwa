@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { buildStockDetailHref } from "../data/stockDetailHref";
+
 import type { RebalancePlan, RebalanceProposal } from "@stock-prep/domain";
 
 import {
@@ -312,7 +314,10 @@ function ProposalRow({ proposal }: { proposal: RebalanceProposal }) {
   return (
     <Link
       className="grid gap-4 p-4 text-zinc-950 transition hover:bg-zinc-50 lg:grid-cols-[4rem_1fr_7rem_9rem] lg:items-center"
-      to={`/stocks/${proposal.symbol.code}`}
+      to={buildStockDetailHref({
+        code: proposal.symbol.code,
+        region: proposal.symbol.region,
+      })}
     >
       <p className="w-fit rounded-md bg-teal-50 px-2 py-1 text-sm font-semibold text-teal-700">
         No. {proposal.rank}

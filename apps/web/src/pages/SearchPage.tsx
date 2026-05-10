@@ -9,6 +9,7 @@ import {
   type SearchRegionFilter,
 } from "../data/searchCatalog";
 import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
+import { formatPriceNumber } from "../data/priceFormat";
 
 type SearchPageState =
   | {
@@ -318,10 +319,5 @@ function formatLastClose(item: SearchCatalogItem): string {
     return "-";
   }
 
-  const fractionDigits = item.currency === "JPY" ? 0 : 2;
-
-  return new Intl.NumberFormat("ja-JP", {
-    maximumFractionDigits: fractionDigits,
-    minimumFractionDigits: fractionDigits,
-  }).format(item.lastClose);
+  return formatPriceNumber(item.lastClose, item.currency);
 }

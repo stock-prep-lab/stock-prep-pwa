@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import type { ImportJobRecord, MarketDataPayload } from "@stock-prep/shared";
 
 import {
+  buildCurrentScopePrefix,
   processClaimedImportJob,
+  resolveScopeArtifactKeysToDelete,
   runStockPrepImportWorker,
   type StockPrepImportWorkerStore,
 } from "./stockPrepImportWorker";
@@ -126,6 +128,26 @@ describe("stockPrepImportWorker", () => {
     expect(messages.some((message) => message.includes("新しい artifact を保存します"))).toBe(true);
     expect(messages.some((message) => message.includes("完了しました"))).toBe(true);
   });
+
+  it("falls back to scope prefix keys instead of whole current keys", () => {
+    expect(
+      resolveScopeArtifactKeysToDelete({
+        scopeKeys: [],
+        scopePrefixKeys: [
+          "current/fx/latest-summary.json",
+          "current/fx/market-data.exchange-rates.json",
+        ],
+      }),
+    ).toEqual([
+      "current/fx/latest-summary.json",
+      "current/fx/market-data.exchange-rates.json",
+    ]);
+  });
+
+  it("builds a scope-local current prefix", () => {
+    expect(buildCurrentScopePrefix("FX")).toBe("current/fx/");
+    expect(buildCurrentScopePrefix("JP")).toBe("current/jp/");
+  });
 });
 
 function createFakeWorkerStore({
@@ -179,7 +201,9 @@ function createFakeWorkerStore({
     async loadCurrentArtifacts() {
       return {
         manifest: null,
-        marketData: currentMarketData,
+        scopeArtifactReferences: {},
+        scopeLatestSummaries: {},
+        scopeMarketData: currentMarketData,
       };
     },
     async loadRawZip(rawObjectKey) {

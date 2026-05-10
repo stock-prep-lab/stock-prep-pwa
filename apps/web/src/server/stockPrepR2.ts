@@ -5,6 +5,8 @@ import {
   type GetObjectCommandOutput,
   HeadObjectCommand,
   type HeadObjectCommandOutput,
+  ListObjectsV2Command,
+  type ListObjectsV2CommandOutput,
   PutObjectCommand,
   type PutObjectCommandOutput,
   S3Client,
@@ -14,6 +16,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 type R2SendCapableClient = {
   send(command: unknown): Promise<unknown>;
 };
+
+const r2RetryBackoffMs = [300, 800, 1500] as const;
 
 export function createR2Client(): S3Client {
   const accountId = process.env.STOCK_PREP_R2_ACCOUNT_ID;
@@ -223,8 +227,55 @@ export async function deleteObject({ key, r2 }: { key: string; r2: S3Client }): 
   );
 }
 
+export async function listObjectKeysByPrefix({
+  prefix,
+  r2,
+}: {
+  prefix: string;
+  r2: S3Client;
+}): Promise<string[]> {
+  const bucket = getBucketName();
+  const keys: string[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await sendR2Command<ListObjectsV2CommandOutput>(
+      r2,
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        ContinuationToken: continuationToken,
+        Prefix: prefix,
+      }),
+    );
+
+    for (const item of response.Contents ?? []) {
+      if (item.Key) {
+        keys.push(item.Key);
+      }
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return keys;
+}
+
 async function sendR2Command<T>(r2: S3Client, command: unknown): Promise<T> {
-  return (await (r2 as S3Client & R2SendCapableClient).send(command)) as T;
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return (await (r2 as S3Client & R2SendCapableClient).send(command)) as T;
+    } catch (error) {
+      if (!isRetryableR2Error(error) || attempt >= r2RetryBackoffMs.length) {
+        throw error;
+      }
+
+      const backoffMs = r2RetryBackoffMs[attempt] + Math.floor(Math.random() * 150);
+      await wait(backoffMs);
+      attempt += 1;
+    }
+  }
 }
 
 function getBucketName(): string {
@@ -235,4 +286,46 @@ function getBucketName(): string {
   }
 
   return bucket;
+}
+
+function isRetryableR2Error(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const candidate = error as {
+    $metadata?: { httpStatusCode?: number };
+    code?: string;
+    name?: string;
+    reason?: string;
+  };
+  const httpStatusCode = candidate.$metadata?.httpStatusCode;
+
+  if (httpStatusCode !== undefined) {
+    if (httpStatusCode === 429 || httpStatusCode >= 500) {
+      return true;
+    }
+
+    if (httpStatusCode === 404) {
+      return false;
+    }
+  }
+
+  const text = [candidate.name, candidate.code, candidate.reason]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    text.includes("bad record mac") ||
+    text.includes("timeout") ||
+    text.includes("timed out") ||
+    text.includes("econnreset") ||
+    text.includes("socket hang up") ||
+    text.includes("throttl")
+  );
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -55,7 +55,7 @@ export async function importBulkZip({
     });
 
     return readJsonResponse<ImportJobRecord>(response);
-  });
+  }, { activity: "background" });
 }
 
 async function createImportUploadSession(

@@ -8,6 +8,8 @@ import type {
   ImportUploadSessionPayload,
   LatestSummaryPayload,
   MarketDataPayload,
+  StockDetailPayload,
+  StockDetailRequest,
   UpsertHoldingRequest,
 } from "@stock-prep/shared";
 
@@ -23,6 +25,12 @@ export async function handleDatasetVersionRequest({
 
 export async function handleMarketDataRequest(): Promise<MarketDataPayload> {
   return getStockPrepServerBackend().getMarketDataPayload();
+}
+
+export async function handleStockDetailRequest(
+  request: StockDetailRequest,
+): Promise<StockDetailPayload | null> {
+  return getStockPrepServerBackend().getStockDetailPayload(request);
 }
 
 export async function handleLatestSummaryRequest(): Promise<LatestSummaryPayload> {
