@@ -114,7 +114,7 @@ export function StockDetailChart({
     chart.priceScale("right").applyOptions({
       scaleMargins: {
         bottom: 0.24,
-        top: 0.08,
+        top: 0.18,
       },
     });
 
