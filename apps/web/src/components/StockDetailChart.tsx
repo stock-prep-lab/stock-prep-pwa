@@ -132,6 +132,40 @@ export function StockDetailChart({
       priceLineVisible: false,
       visible: visibility.ma75,
     });
+    const ichimokuConversionSeries = chart.addSeries(LineSeries, {
+      color: "#2563eb",
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      lineWidth: 1,
+      priceLineVisible: false,
+      visible: visibility.ichimoku,
+    });
+    const ichimokuBaseSeries = chart.addSeries(LineSeries, {
+      color: "#7c3aed",
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      lineWidth: 1,
+      priceLineVisible: false,
+      visible: visibility.ichimoku,
+    });
+    const ichimokuSpanASeries = chart.addSeries(LineSeries, {
+      color: "#16a34a",
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      priceLineVisible: false,
+      visible: visibility.ichimoku,
+    });
+    const ichimokuSpanBSeries = chart.addSeries(LineSeries, {
+      color: "#dc2626",
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      priceLineVisible: false,
+      visible: visibility.ichimoku,
+    });
     const bollingerUpperSeries = chart.addSeries(LineSeries, {
       color: "#6366f1",
       crosshairMarkerVisible: false,
@@ -188,9 +222,15 @@ export function StockDetailChart({
     let nextPaneIndex = 1;
     let rsiPaneIndex: number | null = null;
     let macdPaneIndex: number | null = null;
+    let stochasticPaneIndex: number | null = null;
 
     if (visibility.rsi) {
       rsiPaneIndex = nextPaneIndex;
+      nextPaneIndex += 1;
+    }
+
+    if (visibility.stochastic) {
+      stochasticPaneIndex = nextPaneIndex;
       nextPaneIndex += 1;
     }
 
@@ -280,11 +320,73 @@ export function StockDetailChart({
             macdPaneIndex,
           )
         : null;
+    const stochasticKSeries =
+      stochasticPaneIndex !== null
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: "#0f766e",
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              lineWidth: 2,
+              priceLineVisible: false,
+            },
+            stochasticPaneIndex,
+          )
+        : null;
+    const stochasticDSeries =
+      stochasticPaneIndex !== null
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: "#d97706",
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              lineWidth: 2,
+              priceLineVisible: false,
+            },
+            stochasticPaneIndex,
+          )
+        : null;
+    const stochasticUpperSeries =
+      stochasticPaneIndex !== null
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: "#a1a1aa",
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              lineStyle: LineStyle.Dashed,
+              lineWidth: 1,
+              priceLineVisible: false,
+            },
+            stochasticPaneIndex,
+          )
+        : null;
+    const stochasticLowerSeries =
+      stochasticPaneIndex !== null
+        ? chart.addSeries(
+            LineSeries,
+            {
+              color: "#a1a1aa",
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              lineStyle: LineStyle.Dashed,
+              lineWidth: 1,
+              priceLineVisible: false,
+            },
+            stochasticPaneIndex,
+          )
+        : null;
 
     candleSeries.setData(chartData.candlesticks);
     volumeSeries.setData(chartData.volume);
     ma25Series.setData(chartData.ma25);
     ma75Series.setData(chartData.ma75);
+    ichimokuConversionSeries.setData(chartData.ichimokuConversion);
+    ichimokuBaseSeries.setData(chartData.ichimokuBase);
+    ichimokuSpanASeries.setData(chartData.ichimokuSpanA);
+    ichimokuSpanBSeries.setData(chartData.ichimokuSpanB);
     bollingerUpperSeries.setData(chartData.bollingerUpper);
     bollingerMiddleSeries.setData(chartData.bollingerMiddle);
     bollingerLowerSeries.setData(chartData.bollingerLower);
@@ -316,6 +418,27 @@ export function StockDetailChart({
         scaleMargins: {
           bottom: 0.15,
           top: 0.15,
+        },
+      });
+    }
+
+    if (
+      stochasticKSeries &&
+      stochasticDSeries &&
+      stochasticUpperSeries &&
+      stochasticLowerSeries &&
+      stochasticPaneIndex !== null
+    ) {
+      stochasticKSeries.setData(chartData.stochasticK);
+      stochasticDSeries.setData(chartData.stochasticD);
+      stochasticUpperSeries.setData(chartData.stochasticUpperBand);
+      stochasticLowerSeries.setData(chartData.stochasticLowerBand);
+      chart.priceScale("right", stochasticPaneIndex).applyOptions({
+        autoScale: true,
+        borderColor: "#d4d4d8",
+        scaleMargins: {
+          bottom: 0.1,
+          top: 0.1,
         },
       });
     }

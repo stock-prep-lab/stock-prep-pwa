@@ -57,6 +57,9 @@ describe("stockDetailData", () => {
     expect(detail.chartData.candlesticks).toHaveLength(80);
     expect(detail.chartData.ma25).toHaveLength(56);
     expect(detail.chartData.ma75).toHaveLength(6);
+    expect(detail.chartData.ichimokuConversion.length).toBeGreaterThan(0);
+    expect(detail.chartData.ichimokuBase.length).toBeGreaterThan(0);
+    expect(detail.chartData.stochasticK.length).toBeGreaterThan(0);
     expect(detail.chartData.bollingerUpper.length).toBeGreaterThan(0);
     expect(detail.chartData.rsi.length).toBeGreaterThan(0);
     expect(detail.chartData.macdLine.length).toBeGreaterThan(0);
@@ -66,11 +69,13 @@ describe("stockDetailData", () => {
     expect(detail.trendSignals.map((signal) => signal.label)).toEqual([
       "25MA",
       "75MA",
+      "一目均衡表",
       "RSI(14)",
+      "ストキャスティクス",
       "MACD(12,26,9)",
       "ボリンジャー(20,±2σ)",
     ]);
-    expect(detail.insightLines.length).toBeGreaterThan(0);
+    expect(detail.insightSections.length).toBeGreaterThan(0);
     expect(detail.priceMetrics[0]?.label).toBe("終値");
   });
 });

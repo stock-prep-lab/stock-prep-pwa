@@ -16,23 +16,27 @@ export const defaultStopLossRatio = 0.92;
 export type StockDetailChartVisibility = {
   bollinger: boolean;
   buyPrice: boolean;
+  ichimoku: boolean;
   macd: boolean;
   ma25: boolean;
   ma75: boolean;
   recentHigh: boolean;
   rsi: boolean;
   stopLoss: boolean;
+  stochastic: boolean;
 };
 
 export const defaultStockDetailChartVisibility: StockDetailChartVisibility = {
   bollinger: false,
   buyPrice: true,
+  ichimoku: false,
   macd: false,
   ma25: true,
   ma75: true,
   recentHigh: false,
   rsi: false,
   stopLoss: false,
+  stochastic: false,
 };
 
 export type StockDetailMetric = {
@@ -41,11 +45,19 @@ export type StockDetailMetric = {
   value: string;
 };
 
+export type StockDetailSignalGroup = "oscillator" | "trend";
+
 export type StockDetailTrendSignal = {
   description: string;
+  group: StockDetailSignalGroup;
   label: string;
   tone: "positive" | "neutral" | "warning";
   value: string;
+};
+
+export type StockDetailInsightSection = {
+  lines: string[];
+  title: string;
 };
 
 export type StockDetailChartPoint = {
@@ -79,6 +91,10 @@ export type StockDetailChartData = {
   bollingerUpper: StockDetailChartPoint[];
   buyPrice: StockDetailChartPoint[] | null;
   candlesticks: StockDetailCandlestickPoint[];
+  ichimokuBase: StockDetailChartPoint[];
+  ichimokuConversion: StockDetailChartPoint[];
+  ichimokuSpanA: StockDetailChartPoint[];
+  ichimokuSpanB: StockDetailChartPoint[];
   macdHistogram: StockDetailHistogramPoint[];
   macdLine: StockDetailChartPoint[];
   macdSignal: StockDetailChartPoint[];
@@ -89,6 +105,10 @@ export type StockDetailChartData = {
   rsiLowerBand: StockDetailChartPoint[];
   rsiUpperBand: StockDetailChartPoint[];
   stopLoss: StockDetailChartPoint[] | null;
+  stochasticD: StockDetailChartPoint[];
+  stochasticK: StockDetailChartPoint[];
+  stochasticLowerBand: StockDetailChartPoint[];
+  stochasticUpperBand: StockDetailChartPoint[];
   volume: StockDetailVolumePoint[];
 };
 
@@ -106,7 +126,28 @@ type MacdPoint = {
   time: string;
 };
 
+type StochasticPoint = {
+  d: number;
+  k: number;
+  time: string;
+};
+
+type IchimokuPointSet = {
+  base: StockDetailChartPoint[];
+  conversion: StockDetailChartPoint[];
+  spanA: StockDetailChartPoint[];
+  spanB: StockDetailChartPoint[];
+};
+
 type TrendContext = "downtrend" | "range" | "uptrend";
+
+type ResolvedIchimokuState = {
+  base: number | null;
+  cloudLower: number | null;
+  cloudUpper: number | null;
+  conversion: number | null;
+  pricePosition: "above-cloud" | "below-cloud" | "inside-cloud" | "unknown";
+};
 
 export type StockDetailPageData = {
   chartData: StockDetailChartData;
@@ -114,7 +155,7 @@ export type StockDetailPageData = {
   generatedAt: string;
   holding: PortfolioHolding | null;
   importStatusLabel: string;
-  insightLines: string[];
+  insightSections: StockDetailInsightSection[];
   latestBar: DailyPriceBar | null;
   marketLabel: string;
   priceMetrics: StockDetailMetric[];
@@ -161,7 +202,9 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
   const week52Low = getMinValue(trailingHistory.map((bar) => bar.low));
   const ma25Values = calculateSimpleMovingAverage(history, 25);
   const ma75Values = calculateSimpleMovingAverage(history, 75);
+  const ichimokuValues = calculateIchimoku(history);
   const rsi14Values = calculateRsi(history, 14);
+  const stochastic14Values = calculateStochastics(history, 14, 3);
   const bollinger20Values = calculateBollingerBands(history, 20, 2);
   const macdValues = calculateMacd(history, 12, 26, 9);
   const ma25Latest = ma25Values.at(-1)?.value ?? null;
@@ -172,6 +215,12 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
   const latestBollinger = bollinger20Values.at(-1) ?? null;
   const latestMacd = macdValues.at(-1) ?? null;
   const previousMacd = macdValues.at(-2) ?? null;
+  const latestStochastic = stochastic14Values.at(-1) ?? null;
+  const previousStochastic = stochastic14Values.at(-2) ?? null;
+  const latestIchimoku = resolveLatestIchimokuState({
+    currentClose,
+    history,
+  });
   const recentHighValue = getMaxValue(trailingHistory.map((bar) => bar.high));
   const buyPrice = payload.holding?.averagePrice ?? null;
   const stopLossPrice = buyPrice ? roundToPriceTick(buyPrice * defaultStopLossRatio) : null;
@@ -185,12 +234,14 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
     bollingerValues: bollinger20Values,
     buyPrice,
     history,
+    ichimokuValues,
     macdValues,
     ma25Values,
     ma75Values,
     recentHighValue,
     rsi14Values,
     stopLossPrice,
+    stochasticValues: stochastic14Values,
   });
 
   return {
@@ -199,11 +250,12 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
     generatedAt: payload.generatedAt,
     holding: payload.holding,
     importStatusLabel: payload.importStatus === "ready" ? "終値取得済み" : "終値未取得",
-    insightLines: buildInsightLines({
+    insightSections: buildInsightSections({
       buyPrice,
       bollinger: latestBollinger,
       currency: payload.symbol.currency,
       currentClose,
+      ichimoku: latestIchimoku,
       latestMacd,
       ma25Latest,
       previousMacd,
@@ -212,6 +264,8 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
       rsi14Latest,
       rsi14Previous,
       stopLossPrice,
+      stochastic: latestStochastic,
+      previousStochastic,
       trendContext,
     }),
     latestBar,
@@ -283,6 +337,7 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
             : ma25Previous !== null && ma25Latest > ma25Previous
               ? "25MA が上向きで、短期トレンドは改善中です。"
               : "25MA は横ばい〜下向きで、勢いはまだ限定的です。",
+        group: "trend",
         label: "25MA",
         tone:
           ma25Latest !== null && currentClose !== null && currentClose >= ma25Latest ? "positive" : "warning",
@@ -296,6 +351,7 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
             : currentClose !== null && currentClose >= ma75Latest
               ? "75MA の上で推移していて、中期トレンドは維持されています。"
               : "75MA を下回っていて、中期トレンドは慎重に見たい状態です。",
+        group: "trend",
         label: "75MA",
         tone:
           ma75Latest !== null && currentClose !== null && currentClose >= ma75Latest ? "positive" : "neutral",
@@ -303,11 +359,23 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
           ma75Latest !== null && currentClose !== null && currentClose >= ma75Latest ? "上回り" : "下回り",
       },
       {
+        description: buildIchimokuDescription({
+          ichimoku: latestIchimoku,
+        }),
+        group: "trend",
+        label: "一目均衡表",
+        tone: resolveIchimokuTone({
+          ichimoku: latestIchimoku,
+        }),
+        value: formatIchimokuValue(latestIchimoku),
+      },
+      {
         description: buildRsiDescription({
           previousRsi: rsi14Previous,
           rsi: rsi14Latest,
           trendContext,
         }),
+        group: "oscillator",
         label: "RSI(14)",
         tone: resolveRsiTone({
           previousRsi: rsi14Previous,
@@ -317,10 +385,26 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
         value: formatRsiValue(rsi14Latest),
       },
       {
+        description: buildStochasticDescription({
+          latest: latestStochastic,
+          previous: previousStochastic,
+          trendContext,
+        }),
+        group: "oscillator",
+        label: "ストキャスティクス",
+        tone: resolveStochasticTone({
+          latest: latestStochastic,
+          previous: previousStochastic,
+          trendContext,
+        }),
+        value: formatStochasticValue(latestStochastic),
+      },
+      {
         description: buildMacdDescription({
           latest: latestMacd,
           previous: previousMacd,
         }),
+        group: "trend",
         label: "MACD(12,26,9)",
         tone: resolveMacdTone({
           latest: latestMacd,
@@ -334,6 +418,7 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
           currentClose,
           trendContext,
         }),
+        group: "trend",
         label: "ボリンジャー(20,±2σ)",
         tone: resolveBollingerTone({
           bollinger: latestBollinger,
@@ -354,22 +439,26 @@ function buildChartData({
   bollingerValues,
   buyPrice,
   history,
+  ichimokuValues,
   macdValues,
   ma25Values,
   ma75Values,
   recentHighValue,
   rsi14Values,
   stopLossPrice,
+  stochasticValues,
 }: {
   bollingerValues: BollingerBandPoint[];
   buyPrice: number | null;
   history: DailyPriceBar[];
+  ichimokuValues: IchimokuPointSet;
   macdValues: MacdPoint[];
   ma25Values: StockDetailChartPoint[];
   ma75Values: StockDetailChartPoint[];
   recentHighValue: number | null;
   rsi14Values: StockDetailChartPoint[];
   stopLossPrice: number | null;
+  stochasticValues: StochasticPoint[];
 }): StockDetailChartData {
   const times = history.map((bar) => bar.date);
 
@@ -385,6 +474,10 @@ function buildChartData({
       open: bar.open,
       time: bar.date,
     })),
+    ichimokuBase: ichimokuValues.base,
+    ichimokuConversion: ichimokuValues.conversion,
+    ichimokuSpanA: ichimokuValues.spanA,
+    ichimokuSpanB: ichimokuValues.spanB,
     macdHistogram: macdValues.map((point) => ({
       color: point.histogram >= 0 ? "#0f766e" : "#d97706",
       time: point.time,
@@ -399,6 +492,10 @@ function buildChartData({
     rsiLowerBand: buildConstantLine(times, 30),
     rsiUpperBand: buildConstantLine(times, 70),
     stopLoss: stopLossPrice !== null ? buildConstantLine(times, stopLossPrice) : null,
+    stochasticD: stochasticValues.map((point) => ({ time: point.time, value: point.d })),
+    stochasticK: stochasticValues.map((point) => ({ time: point.time, value: point.k })),
+    stochasticLowerBand: buildConstantLine(times, 20),
+    stochasticUpperBand: buildConstantLine(times, 80),
     volume: history.map((bar) => ({
       color: bar.close >= bar.open ? "#0f766e" : "#d97706",
       time: bar.date,
@@ -411,11 +508,12 @@ function buildConstantLine(times: string[], value: number): StockDetailChartPoin
   return times.map((time) => ({ time, value }));
 }
 
-function buildInsightLines({
+function buildInsightSections({
   buyPrice,
   bollinger,
   currency,
   currentClose,
+  ichimoku,
   latestMacd,
   ma25Latest,
   previousMacd,
@@ -424,12 +522,15 @@ function buildInsightLines({
   rsi14Latest,
   rsi14Previous,
   stopLossPrice,
+  stochastic,
+  previousStochastic,
   trendContext,
 }: {
   buyPrice: number | null;
   bollinger: BollingerBandPoint | null;
   currency: StockDetailPayload["symbol"]["currency"];
   currentClose: number | null;
+  ichimoku: ResolvedIchimokuState | null;
   latestMacd: MacdPoint | null;
   ma25Latest: number | null;
   previousMacd: MacdPoint | null;
@@ -438,12 +539,16 @@ function buildInsightLines({
   rsi14Latest: number | null;
   rsi14Previous: number | null;
   stopLossPrice: number | null;
+  stochastic: StochasticPoint | null;
+  previousStochastic: StochasticPoint | null;
   trendContext: TrendContext;
-}): string[] {
-  const lines: string[] = [];
+}): StockDetailInsightSection[] {
+  const trendLines: string[] = [];
+  const oscillatorLines: string[] = [];
+  const holdingLines: string[] = [];
 
   if (currentClose !== null && ma25Latest !== null) {
-    lines.push(
+    trendLines.push(
       currentClose >= ma25Latest
         ? "終値は 25MA の上にあり、短期の勢いは保たれています。"
         : "終値は 25MA の下にあり、反発確認までは慎重に見ます。",
@@ -453,10 +558,16 @@ function buildInsightLines({
   if (currentClose !== null && recentHighValue !== null) {
     const ratio = currentClose / recentHighValue;
     if (ratio >= 0.97) {
-      lines.push("直近高値圏にあり、追いかけ買いにならないかを確認したい場面です。");
+      trendLines.push("直近高値圏にあり、追いかけ買いにならないかを確認したい場面です。");
     } else if (ratio >= 0.9) {
-      lines.push("直近高値から大きく離れておらず、押し目候補として見やすい位置です。");
+      trendLines.push("直近高値から大きく離れておらず、押し目候補として見やすい位置です。");
     }
+  }
+
+  const ichimokuLine = buildIchimokuInsightLine(ichimoku);
+
+  if (ichimokuLine !== null) {
+    trendLines.push(ichimokuLine);
   }
 
   const rsiLine = buildRsiInsightLine({
@@ -466,7 +577,17 @@ function buildInsightLines({
   });
 
   if (rsiLine !== null) {
-    lines.push(rsiLine);
+    oscillatorLines.push(rsiLine);
+  }
+
+  const stochasticLine = buildStochasticInsightLine({
+    latest: stochastic,
+    previous: previousStochastic,
+    trendContext,
+  });
+
+  if (stochasticLine !== null) {
+    oscillatorLines.push(stochasticLine);
   }
 
   const bollingerLine = buildBollingerInsightLine({
@@ -476,7 +597,7 @@ function buildInsightLines({
   });
 
   if (bollingerLine !== null) {
-    lines.push(bollingerLine);
+    trendLines.push(bollingerLine);
   }
 
   const macdLine = buildMacdInsightLine({
@@ -485,29 +606,35 @@ function buildInsightLines({
   });
 
   if (macdLine !== null) {
-    lines.push(macdLine);
+    trendLines.push(macdLine);
   }
 
   if (buyPrice !== null && stopLossPrice !== null && currentClose !== null) {
-    lines.push(
+    holdingLines.push(
       `保有買値 ${formatCurrency(buyPrice, currency)} に対して、損切り目安を ${formatCurrency(
         stopLossPrice,
         currency,
       )} に置いて確認できます。`,
     );
   } else {
-    lines.push("保有を登録すると、買値ラインと損切りラインをチャートに重ねて確認できます。");
+    holdingLines.push(
+      "保有を登録すると、買値ラインと損切りラインをチャートに重ねて確認できます。",
+    );
   }
 
   if (priceChangeRate !== null) {
-    lines.push(
+    holdingLines.push(
       priceChangeRate >= 0
         ? `前日比は ${formatSignedPercent(priceChangeRate)} で引けています。`
         : `前日比は ${formatSignedPercent(priceChangeRate)} で、押し目か失速かを見分けたい場面です。`,
     );
   }
 
-  return lines.slice(0, 5);
+  return [
+    { lines: trendLines.slice(0, 3), title: "トレンド分析" },
+    { lines: oscillatorLines.slice(0, 2), title: "オシレーター分析" },
+    { lines: holdingLines.slice(0, 2), title: "保有 / 価格メモ" },
+  ].filter((section) => section.lines.length > 0);
 }
 
 function calculateSimpleMovingAverage(
@@ -583,6 +710,70 @@ function resolveRsiValue(averageGain: number, averageLoss: number): number {
 
   const relativeStrength = averageGain / averageLoss;
   return 100 - 100 / (1 + relativeStrength);
+}
+
+function calculateIchimoku(history: DailyPriceBar[]): IchimokuPointSet {
+  const conversionBase = calculateHighLowMidpoint(history, 9);
+  const baseBase = calculateHighLowMidpoint(history, 26);
+  const spanBBase = calculateHighLowMidpoint(history, 52);
+  const conversionMap = new Map(conversionBase.map((point) => [point.time, point.value]));
+  const spanASeed = baseBase.flatMap((point) => {
+    const conversion = conversionMap.get(point.time);
+
+    return conversion === undefined
+      ? []
+      : [{ time: point.time, value: roundToPriceTick((conversion + point.value) / 2) }];
+  });
+
+  return {
+    base: baseBase,
+    conversion: conversionBase,
+    spanA: shiftForwardPoints(history, spanASeed, 26),
+    spanB: shiftForwardPoints(history, spanBBase, 26),
+  };
+}
+
+function calculateStochastics(
+  history: DailyPriceBar[],
+  period: number,
+  signalPeriod: number,
+): StochasticPoint[] {
+  if (history.length < period) {
+    return [];
+  }
+
+  const kValues: StockDetailChartPoint[] = [];
+
+  for (let index = period - 1; index < history.length; index += 1) {
+    const window = history.slice(index - period + 1, index + 1);
+    const highestHigh = Math.max(...window.map((bar) => bar.high));
+    const lowestLow = Math.min(...window.map((bar) => bar.low));
+    const denominator = highestHigh - lowestLow;
+    const kValue =
+      denominator === 0 ? 50 : ((history[index]!.close - lowestLow) / denominator) * 100;
+
+    kValues.push({
+      time: history[index]!.date,
+      value: roundToPriceTick(kValue),
+    });
+  }
+
+  const dValues = calculateSimpleMovingAverageFromPoints(kValues, signalPeriod);
+  const dMap = new Map(dValues.map((point) => [point.time, point.value]));
+
+  return kValues.flatMap((point) => {
+    const d = dMap.get(point.time);
+
+    return d === undefined
+      ? []
+      : [
+          {
+            d,
+            k: point.value,
+            time: point.time,
+          },
+        ];
+  });
 }
 
 function calculateBollingerBands(
@@ -691,6 +882,56 @@ function calculateExponentialMovingAverageFromPoints(
   return values;
 }
 
+function calculateSimpleMovingAverageFromPoints(
+  points: StockDetailChartPoint[],
+  windowSize: number,
+): StockDetailChartPoint[] {
+  if (points.length < windowSize) {
+    return [];
+  }
+
+  const values: StockDetailChartPoint[] = [];
+  let rollingSum = 0;
+
+  for (let index = 0; index < points.length; index += 1) {
+    rollingSum += points[index]!.value;
+
+    if (index >= windowSize) {
+      rollingSum -= points[index - windowSize]!.value;
+    }
+
+    if (index >= windowSize - 1) {
+      values.push({
+        time: points[index]!.time,
+        value: roundToPriceTick(rollingSum / windowSize),
+      });
+    }
+  }
+
+  return values;
+}
+
+function calculateHighLowMidpoint(history: DailyPriceBar[], period: number): StockDetailChartPoint[] {
+  if (history.length < period) {
+    return [];
+  }
+
+  const values: StockDetailChartPoint[] = [];
+
+  for (let index = period - 1; index < history.length; index += 1) {
+    const window = history.slice(index - period + 1, index + 1);
+    const highestHigh = Math.max(...window.map((bar) => bar.high));
+    const lowestLow = Math.min(...window.map((bar) => bar.low));
+
+    values.push({
+      time: history[index]!.date,
+      value: roundToPriceTick((highestHigh + lowestLow) / 2),
+    });
+  }
+
+  return values;
+}
+
 async function loadCachedSymbol(
   request: StockDetailRequest,
 ): Promise<StoredStockSymbol | null> {
@@ -719,6 +960,58 @@ async function loadCachedSymbol(
 
 function sortPriceHistory(history: DailyPriceBar[]): DailyPriceBar[] {
   return [...history].sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function shiftForwardPoints(
+  history: DailyPriceBar[],
+  points: StockDetailChartPoint[],
+  offset: number,
+): StockDetailChartPoint[] {
+  if (points.length === 0) {
+    return [];
+  }
+
+  const times = history.map((bar) => bar.date);
+  const futureTimes = buildFutureBusinessDates(times.at(-1) ?? null, offset);
+  const extendedTimes = [...times, ...futureTimes];
+  const timeIndexMap = new Map(extendedTimes.map((time, index) => [time, index]));
+
+  return points.flatMap((point) => {
+    const currentIndex = timeIndexMap.get(point.time);
+
+    if (currentIndex === undefined) {
+      return [];
+    }
+
+    const shiftedTime = extendedTimes[currentIndex + offset];
+
+    return shiftedTime ? [{ time: shiftedTime, value: point.value }] : [];
+  });
+}
+
+function buildFutureBusinessDates(lastDate: string | null, count: number): string[] {
+  if (!lastDate || count <= 0) {
+    return [];
+  }
+
+  const dates: string[] = [];
+  const cursor = new Date(`${lastDate}T00:00:00Z`);
+
+  while (dates.length < count) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const day = cursor.getUTCDay();
+
+    if (day === 0 || day === 6) {
+      continue;
+    }
+
+    const year = cursor.getUTCFullYear();
+    const month = String(cursor.getUTCMonth() + 1).padStart(2, "0");
+    const dayText = String(cursor.getUTCDate()).padStart(2, "0");
+    dates.push(`${year}-${month}-${dayText}`);
+  }
+
+  return dates;
 }
 
 function getMaxValue(values: number[]): number | null {
@@ -765,6 +1058,117 @@ function resolveTrendContext({
   }
 
   return "range";
+}
+
+function resolveLatestIchimokuState({
+  currentClose,
+  history,
+}: {
+  currentClose: number | null;
+  history: DailyPriceBar[];
+}): ResolvedIchimokuState | null {
+  if (currentClose === null) {
+    return null;
+  }
+
+  const conversion = calculateHighLowMidpoint(history, 9).at(-1)?.value ?? null;
+  const base = calculateHighLowMidpoint(history, 26).at(-1)?.value ?? null;
+  const spanB = calculateHighLowMidpoint(history, 52).at(-1)?.value ?? null;
+  const spanA =
+    conversion !== null && base !== null ? roundToPriceTick((conversion + base) / 2) : null;
+
+  if (conversion === null && base === null && spanA === null && spanB === null) {
+    return null;
+  }
+
+  if (spanA === null || spanB === null) {
+    return {
+      base,
+      cloudLower: null,
+      cloudUpper: null,
+      conversion,
+      pricePosition: "unknown",
+    };
+  }
+
+  const cloudUpper = Math.max(spanA, spanB);
+  const cloudLower = Math.min(spanA, spanB);
+  const pricePosition =
+    currentClose > cloudUpper
+      ? "above-cloud"
+      : currentClose < cloudLower
+        ? "below-cloud"
+        : "inside-cloud";
+
+  return {
+    base,
+    cloudLower,
+    cloudUpper,
+    conversion,
+    pricePosition,
+  };
+}
+
+function buildIchimokuDescription({
+  ichimoku,
+}: {
+  ichimoku: ResolvedIchimokuState | null;
+}): string {
+  if (ichimoku === null) {
+    return "一目均衡表を計算できるだけの履歴がまだ足りません。";
+  }
+
+  const positionText =
+    ichimoku.pricePosition === "above-cloud"
+      ? "株価は雲の上で推移していて、上昇基調を維持しやすい状態です。"
+      : ichimoku.pricePosition === "below-cloud"
+        ? "株価は雲の下で推移していて、下落基調を警戒したい状態です。"
+        : ichimoku.pricePosition === "inside-cloud"
+          ? "株価は雲の中にあり、方向感はまだ固まり切っていません。"
+          : "雲との位置関係はまだ判断材料が不足しています。";
+
+  const lineText =
+    ichimoku.conversion !== null && ichimoku.base !== null
+      ? ichimoku.conversion >= ichimoku.base
+        ? "転換線が基準線を上回り、短期優勢の見方を取りやすいです。"
+        : "転換線が基準線を下回り、短期の勢いは慎重に見たい状態です。"
+      : "転換線と基準線の関係はまだ十分に確認できません。";
+
+  return `${positionText} ${lineText}`;
+}
+
+function resolveIchimokuTone({
+  ichimoku,
+}: {
+  ichimoku: ResolvedIchimokuState | null;
+}): StockDetailTrendSignal["tone"] {
+  if (ichimoku === null) {
+    return "neutral";
+  }
+
+  if (ichimoku.pricePosition === "above-cloud" && ichimoku.conversion !== null && ichimoku.base !== null && ichimoku.conversion >= ichimoku.base) {
+    return "positive";
+  }
+
+  if (ichimoku.pricePosition === "below-cloud" && ichimoku.conversion !== null && ichimoku.base !== null && ichimoku.conversion < ichimoku.base) {
+    return "warning";
+  }
+
+  return "neutral";
+}
+
+function formatIchimokuValue(ichimoku: ResolvedIchimokuState | null): string {
+  if (ichimoku === null) {
+    return "-";
+  }
+
+  return ichimoku.pricePosition === "above-cloud"
+    ? "雲の上"
+    : ichimoku.pricePosition === "below-cloud"
+      ? "雲の下"
+      : ichimoku.pricePosition === "inside-cloud"
+        ? "雲の中"
+        : "未判定";
 }
 
 function buildRsiDescription({
@@ -847,6 +1251,92 @@ function resolveRsiTone({
 
 function formatRsiValue(value: number | null): string {
   return value !== null ? value.toFixed(1) : "-";
+}
+
+function buildStochasticDescription({
+  latest,
+  previous,
+  trendContext,
+}: {
+  latest: StochasticPoint | null;
+  previous: StochasticPoint | null;
+  trendContext: TrendContext;
+}): string {
+  if (latest === null) {
+    return "ストキャスティクスを計算できるだけの履歴がまだ足りません。";
+  }
+
+  if (
+    trendContext === "uptrend" &&
+    latest.k >= 40 &&
+    latest.k <= 50 &&
+    previous !== null &&
+    latest.k > previous.k
+  ) {
+    return "上昇トレンド中にストキャスティクスが 40〜50 付近から反発していて、押し目候補を確認しやすい状態です。";
+  }
+
+  if (
+    trendContext === "downtrend" &&
+    latest.k >= 50 &&
+    latest.k <= 60 &&
+    previous !== null &&
+    latest.k < previous.k
+  ) {
+    return "下落トレンド中にストキャスティクスが 50〜60 付近で失速していて、戻り売り候補を意識したい状態です。";
+  }
+
+  if (latest.k >= 80) {
+    return "ストキャスティクスは 80 超で、短期的な過熱感を警戒したい位置です。";
+  }
+
+  if (latest.k <= 20) {
+    return "ストキャスティクスは 20 近辺で、短期反発のきっかけを待ちたい位置です。";
+  }
+
+  return latest.k >= latest.d
+    ? "ストキャスティクスは %K が %D を上回り、短期の勢いは改善寄りです。"
+    : "ストキャスティクスは %K が %D を下回り、短期の勢いは慎重に見たい状態です。";
+}
+
+function resolveStochasticTone({
+  latest,
+  previous,
+  trendContext,
+}: {
+  latest: StochasticPoint | null;
+  previous: StochasticPoint | null;
+  trendContext: TrendContext;
+}): StockDetailTrendSignal["tone"] {
+  if (latest === null) {
+    return "neutral";
+  }
+
+  if (trendContext === "uptrend" && latest.k >= 40 && latest.k <= 50 && previous !== null && latest.k > previous.k) {
+    return "positive";
+  }
+
+  if (trendContext === "downtrend" && latest.k >= 50 && latest.k <= 60 && previous !== null && latest.k < previous.k) {
+    return "warning";
+  }
+
+  if (latest.k >= 80) {
+    return "warning";
+  }
+
+  if (latest.k <= 20) {
+    return "positive";
+  }
+
+  return "neutral";
+}
+
+function formatStochasticValue(value: StochasticPoint | null): string {
+  if (value === null) {
+    return "-";
+  }
+
+  return `%K ${value.k.toFixed(1)} / %D ${value.d.toFixed(1)}`;
 }
 
 function buildMacdDescription({
@@ -1036,6 +1526,70 @@ function buildRsiInsightLine({
 
   if (trendContext === "range" && rsi >= 70) {
     return "RSI(14) は 70 付近で、レンジ上限の行き過ぎを警戒したい位置です。";
+  }
+
+  return null;
+}
+
+function buildIchimokuInsightLine(ichimoku: ResolvedIchimokuState | null): string | null {
+  if (ichimoku === null) {
+    return null;
+  }
+
+  if (ichimoku.pricePosition === "above-cloud") {
+    return "一目均衡表では株価が雲の上にあり、支持帯の上で推移しているかを見やすい状態です。";
+  }
+
+  if (ichimoku.pricePosition === "below-cloud") {
+    return "一目均衡表では株価が雲の下にあり、戻り売りに押されないかを確認したい場面です。";
+  }
+
+  if (ichimoku.pricePosition === "inside-cloud") {
+    return "一目均衡表では株価が雲の中にあり、方向感が出るまで少し待ちたい位置です。";
+  }
+
+  return null;
+}
+
+function buildStochasticInsightLine({
+  latest,
+  previous,
+  trendContext,
+}: {
+  latest: StochasticPoint | null;
+  previous: StochasticPoint | null;
+  trendContext: TrendContext;
+}): string | null {
+  if (latest === null) {
+    return null;
+  }
+
+  if (
+    trendContext === "uptrend" &&
+    latest.k >= 40 &&
+    latest.k <= 50 &&
+    previous !== null &&
+    latest.k > previous.k
+  ) {
+    return "ストキャスティクスは 40〜50 付近から反発していて、上昇トレンド中の押し目候補として見やすいです。";
+  }
+
+  if (
+    trendContext === "downtrend" &&
+    latest.k >= 50 &&
+    latest.k <= 60 &&
+    previous !== null &&
+    latest.k < previous.k
+  ) {
+    return "ストキャスティクスは 50〜60 付近で失速していて、下落トレンド中の戻り売り候補を意識したいです。";
+  }
+
+  if (latest.k <= 20) {
+    return "ストキャスティクスは 20 近辺で、短期の売られすぎから反発の兆しを待ちたい位置です。";
+  }
+
+  if (latest.k >= 80) {
+    return "ストキャスティクスは 80 超で、短期の買われすぎから失速しないかを見たい位置です。";
   }
 
   return null;

@@ -21,18 +21,30 @@ type StockDetailState =
   | { status: "loading" }
   | { status: "not-found" };
 
-const toggleItems: Array<{
-  id: keyof StockDetailChartVisibility;
-  label: string;
+const toggleSections: Array<{
+  items: Array<{ id: keyof StockDetailChartVisibility; label: string }>;
+  title: string;
 }> = [
-  { id: "ma25", label: "25MA" },
-  { id: "ma75", label: "75MA" },
-  { id: "bollinger", label: "ボリンジャー" },
-  { id: "rsi", label: "RSI(14)" },
-  { id: "macd", label: "MACD(12,26,9)" },
-  { id: "recentHigh", label: "直近高値ライン" },
-  { id: "buyPrice", label: "買値ライン" },
-  { id: "stopLoss", label: "損切りライン" },
+  {
+    items: [
+      { id: "ma25", label: "25MA" },
+      { id: "ma75", label: "75MA" },
+      { id: "ichimoku", label: "一目均衡表" },
+      { id: "bollinger", label: "ボリンジャー" },
+      { id: "macd", label: "MACD(12,26,9)" },
+      { id: "recentHigh", label: "直近高値ライン" },
+      { id: "buyPrice", label: "買値ライン" },
+      { id: "stopLoss", label: "損切りライン" },
+    ],
+    title: "トレンド分析",
+  },
+  {
+    items: [
+      { id: "rsi", label: "RSI(14)" },
+      { id: "stochastic", label: "ストキャスティクス" },
+    ],
+    title: "オシレーター分析",
+  },
 ];
 
 const trendSignalHelpMap: Record<
@@ -60,6 +72,15 @@ const trendSignalHelpMap: Record<
       "短期の勢いだけでなく、流れ全体が崩れていないかを見る軸として使います。",
     ],
   },
+  "一目均衡表": {
+    summary:
+      "一目均衡表は転換線・基準線・雲を使って、トレンド方向と支持抵抗を一目で見る指標です。",
+    usage: [
+      "株価が雲の上なら上昇基調、雲の下なら下落基調、雲の中なら方向感がまだ弱いと見ます。",
+      "転換線が基準線を上回ると短期優勢、下回ると短期の勢いが弱いと見やすいです。",
+      "雲の厚みがあるほど、支持や抵抗として機能しやすいかを確認します。",
+    ],
+  },
   "RSI(14)": {
     summary:
       "RSI は 0〜100 で買われすぎ・売られすぎや勢いの偏りを見る代表的な指標です。",
@@ -67,6 +88,15 @@ const trendSignalHelpMap: Record<
       "上昇トレンドでは 40〜50 付近まで下がって反発したら押し目候補として見ます。",
       "下落トレンドでは 50〜60 付近で跳ね返されると戻り売り候補として警戒します。",
       "レンジ相場では 30 付近で買い、70 付近で売りを検討する目安にします。",
+    ],
+  },
+  "ストキャスティクス": {
+    summary:
+      "ストキャスティクスは直近レンジの中で現在値がどこにあるかを見て、短期の過熱感や反転候補を測る指標です。",
+    usage: [
+      "80以上は買われすぎ気味、20以下は売られすぎ気味の目安として見ます。",
+      "%K が %D を上抜けると反発候補、下抜けると失速候補として見やすいです。",
+      "上昇トレンドでは 40〜50 付近からの反発、下落トレンドでは 50〜60 付近からの失速も確認材料になります。",
     ],
   },
   "MACD(12,26,9)": {
@@ -273,7 +303,7 @@ function LoadedStockDetail({
 
       <section className="flex flex-col gap-4" aria-labelledby="chart-heading">
         <SectionHeader
-          description="ローソク足と出来高に、移動平均線や保有ラインを重ねて確認します。"
+          description="ローソク足と出来高に、トレンド系とオシレーター系の指標を重ねて確認します。"
           title="チャート"
           titleId="chart-heading"
         />
@@ -284,34 +314,41 @@ function LoadedStockDetail({
           <div className="rounded-md border border-zinc-200 bg-white p-4">
             <StockDetailChart chartData={detail.chartData} visibility={chartVisibility} />
 
-            <div className="mt-4 flex flex-wrap gap-3 border-t border-zinc-200 pt-4">
-              {toggleItems.map((item) => {
-                const disabled =
-                  (item.id === "buyPrice" || item.id === "stopLoss") && detail.holding === null;
+            <div className="mt-4 grid gap-4 border-t border-zinc-200 pt-4">
+              {toggleSections.map((section) => (
+                <div className="grid gap-3" key={section.title}>
+                  <p className="text-sm font-medium text-zinc-600">{section.title}</p>
+                  <div className="flex flex-wrap gap-3">
+                    {section.items.map((item) => {
+                      const disabled =
+                        (item.id === "buyPrice" || item.id === "stopLoss") && detail.holding === null;
 
-                return (
-                  <label
-                    className={[
-                      "flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-sm",
-                      disabled
-                        ? "border-zinc-200 bg-zinc-100 text-zinc-400"
-                        : "border-zinc-300 bg-white text-zinc-700",
-                    ].join(" ")}
-                    key={item.id}
-                  >
-                    <input
-                      checked={chartVisibility[item.id]}
-                      className="h-4 w-4 accent-teal-700"
-                      disabled={disabled}
-                      onChange={() => {
-                        onToggle(item.id);
-                      }}
-                      type="checkbox"
-                    />
-                    <span>{item.label}</span>
-                  </label>
-                );
-              })}
+                      return (
+                        <label
+                          className={[
+                            "flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-sm",
+                            disabled
+                              ? "border-zinc-200 bg-zinc-100 text-zinc-400"
+                              : "border-zinc-300 bg-white text-zinc-700",
+                          ].join(" ")}
+                          key={item.id}
+                        >
+                          <input
+                            checked={chartVisibility[item.id]}
+                            className="h-4 w-4 accent-teal-700"
+                            disabled={disabled}
+                            onChange={() => {
+                              onToggle(item.id);
+                            }}
+                            type="checkbox"
+                          />
+                          <span>{item.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -320,37 +357,43 @@ function LoadedStockDetail({
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <section className="flex flex-col gap-4" aria-labelledby="trend-heading">
           <SectionHeader
-            description="候補に入れる前に見る短い判定です。"
-            title="トレンド分析"
+            description="トレンド系とオシレーター系の判定を区分ごとにまとめます。"
+            title="分析サマリー"
             titleId="trend-heading"
           />
 
-          <div className="grid gap-3">
-            {detail.trendSignals.map((signal) => (
-              <TrendCard
-                key={signal.label}
-                onShowHelp={() => {
-                  setActiveHelpLabel(signal.label);
-                }}
-                signal={signal}
-              />
-            ))}
-          </div>
+          <AnalysisSection
+            signals={detail.trendSignals.filter((signal) => signal.group === "trend")}
+            title="トレンド分析"
+            onShowHelp={setActiveHelpLabel}
+          />
+          <AnalysisSection
+            signals={detail.trendSignals.filter((signal) => signal.group === "oscillator")}
+            title="オシレーター分析"
+            onShowHelp={setActiveHelpLabel}
+          />
         </section>
 
         <section className="flex flex-col gap-4" aria-labelledby="comment-heading">
           <SectionHeader
-            description="チャートと保有ラインから、確認ポイントを短くまとめます。"
+            description="チャートと保有ラインから、区分ごとに確認ポイントを短くまとめます。"
             title="確認メモ"
             titleId="comment-heading"
           />
 
           <div className="flex min-h-56 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4">
-            <ul className="grid gap-3 text-sm leading-7 text-zinc-700">
-              {detail.insightLines.map((line) => (
-                <li key={line}>- {line}</li>
+            <div className="grid gap-4">
+              {detail.insightSections.map((section) => (
+                <div className="grid gap-2" key={section.title}>
+                  <p className="text-sm font-medium text-zinc-600">{section.title}</p>
+                  <ul className="grid gap-2 text-sm leading-7 text-zinc-700">
+                    {section.lines.map((line) => (
+                      <li key={line}>- {line}</li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
             <div className="grid gap-2 pt-4 text-sm text-zinc-600 sm:grid-cols-2 lg:grid-cols-1">
               <p>dataset version: {detail.datasetVersion}</p>
               <p>更新時刻: {formatDateTime(detail.generatedAt)}</p>
@@ -390,6 +433,37 @@ function LoadedStockDetail({
         }}
       />
     </>
+  );
+}
+
+function AnalysisSection({
+  onShowHelp,
+  signals,
+  title,
+}: {
+  onShowHelp: (label: string) => void;
+  signals: StockDetailTrendSignal[];
+  title: string;
+}) {
+  if (signals.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="grid gap-3">
+      <h3 className="text-base font-semibold tracking-normal text-zinc-950">{title}</h3>
+      <div className="grid gap-3">
+        {signals.map((signal) => (
+          <TrendCard
+            key={signal.label}
+            onShowHelp={() => {
+              onShowHelp(signal.label);
+            }}
+            signal={signal}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
