@@ -153,6 +153,7 @@ export function HomePage() {
       await addWatchSymbol(symbolId);
     } catch (error) {
       console.error("Failed to toggle watch symbol from home page.", error);
+      window.alert(error instanceof Error ? error.message : "ウォッチ銘柄を更新できませんでした。");
     }
   }
 

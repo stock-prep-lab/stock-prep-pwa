@@ -54,6 +54,10 @@ export async function handleUpsertHoldingRequest(
   return getStockPrepServerBackend().upsertHolding(request);
 }
 
+export async function handleDeleteHoldingRequest(symbolId: string): Promise<HoldingsPayload> {
+  return getStockPrepServerBackend().removeHolding(symbolId);
+}
+
 export async function handleRecordRecentSymbolRequest(
   request: RecordRecentSymbolRequest,
 ): Promise<UserSymbolsPayload> {

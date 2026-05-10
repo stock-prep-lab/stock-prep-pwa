@@ -16,6 +16,7 @@ import {
 } from "../data/stockDetailData";
 import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 import { formatPriceCurrency } from "../data/priceFormat";
+import { buildHoldingFormHref } from "../data/stockDetailHref";
 import {
   addWatchSymbol,
   cacheLatestSymbolSummary,
@@ -189,6 +190,7 @@ export function StockDetailPage() {
       await addWatchSymbol(symbolId);
     } catch (error) {
       console.error("Failed to toggle watch symbol from stock detail.", error);
+      window.alert(error instanceof Error ? error.message : "ウォッチ銘柄を更新できませんでした。");
     }
   }
 
@@ -523,7 +525,10 @@ function LoadedStockDetail({
           </button>
           <Link
             className="flex min-h-12 items-center justify-center rounded-md bg-zinc-950 px-5 text-sm font-medium text-white transition hover:bg-teal-700"
-            to={`/holdings/${detail.symbol.code}/edit`}
+            to={buildHoldingFormHref({
+              code: detail.symbol.code,
+              region: detail.symbol.region,
+            })}
           >
             保有に追加
           </Link>

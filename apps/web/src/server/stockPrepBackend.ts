@@ -128,6 +128,7 @@ type StockPrepServerBackend = {
     zipBytes: Uint8Array;
   }): Promise<ImportJobRecord>;
   addWatchlistSymbol(request: UpsertWatchlistSymbolRequest): Promise<UserSymbolsPayload>;
+  removeHolding(symbolId: string): Promise<HoldingsPayload>;
   removeWatchlistSymbol(symbolId: string): Promise<UserSymbolsPayload>;
   recordRecentSymbol(request: RecordRecentSymbolRequest): Promise<UserSymbolsPayload>;
   upsertHolding(request: UpsertHoldingRequest): Promise<HoldingsPayload>;
@@ -310,6 +311,18 @@ function createInMemoryBackend(): StockPrepServerBackend {
         holdings: [...filteredHoldings, nextHolding].sort((left, right) =>
           left.symbolId.localeCompare(right.symbolId),
         ),
+        updatedAt,
+      };
+
+      return structuredClone(state.holdingsPayload);
+    },
+    async removeHolding(symbolId) {
+      const state = getInMemoryState();
+      const updatedAt = new Date().toISOString();
+
+      state.holdingsPayload = {
+        ...state.holdingsPayload,
+        holdings: state.holdingsPayload.holdings.filter((holding) => holding.symbolId !== symbolId),
         updatedAt,
       };
 
@@ -681,6 +694,16 @@ function createRemoteBackend(): StockPrepServerBackend {
           updatedAt,
         },
         supabase,
+      }).catch((error) => {
+        throw wrapSupabaseSchemaError(error);
+      });
+
+      return this.getHoldingsPayload();
+    },
+    async removeHolding(symbolId) {
+      await deleteHoldingRow({
+        supabase,
+        symbolId,
       }).catch((error) => {
         throw wrapSupabaseSchemaError(error);
       });
@@ -1136,6 +1159,23 @@ async function upsertHoldingRow({
   const { error } = await supabase
     .from(supabaseTableNames.holdings)
     .upsert(mapHoldingRecord(holding));
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function deleteHoldingRow({
+  supabase,
+  symbolId,
+}: {
+  supabase: SupabaseClient;
+  symbolId: string;
+}): Promise<void> {
+  const { error } = await supabase
+    .from(supabaseTableNames.holdings)
+    .delete()
+    .eq("symbol_id", symbolId);
 
   if (error) {
     throw error;

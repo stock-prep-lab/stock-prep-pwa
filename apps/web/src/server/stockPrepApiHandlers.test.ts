@@ -11,6 +11,7 @@ import {
   handleLatestSummaryRequest,
   handleListImportJobsRequest,
   handleMarketDataRequest,
+  handleDeleteHoldingRequest,
   handleRecordRecentSymbolRequest,
   handleRemoveWatchlistSymbolRequest,
   handleStockDetailRequest,
@@ -155,6 +156,22 @@ describe("stockPrepApiHandlers", () => {
       symbolId: "jp-9432",
     });
     expect(payload.updatedAt).not.toBe("2026-04-17T15:00:00+09:00");
+  });
+
+  it("deletes a holding and returns the updated holdings payload", async () => {
+    const payload = await handleDeleteHoldingRequest("jp-7203");
+
+    expect(payload.holdings).toEqual([]);
+  });
+
+  it("rejects watchlist additions beyond the max count", async () => {
+    for (let index = 0; index < 50; index += 1) {
+      await handleAddWatchlistSymbolRequest({ symbolId: `watch-${index}` });
+    }
+
+    await expect(
+      handleAddWatchlistSymbolRequest({ symbolId: "watch-over-limit" }),
+    ).rejects.toThrow("ウォッチ銘柄は最大 50 件までです。");
   });
 
   it("imports a JP ZIP and exposes the resulting import job state", async () => {

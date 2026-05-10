@@ -1,4 +1,5 @@
 import type {
+  DeleteHoldingRequest,
   DatasetVersionPayload,
   HoldingsPayload,
   LatestSummaryPayload,
@@ -100,6 +101,17 @@ export async function upsertHolding(request: UpsertHoldingRequest): Promise<Hold
       "Content-Type": "application/json",
     },
     method: "PUT",
+  });
+
+  return readJsonResponse<HoldingsPayload>(response);
+}
+
+export async function deleteHolding(request: DeleteHoldingRequest): Promise<HoldingsPayload> {
+  const query = new URLSearchParams();
+  query.set("symbolId", request.symbolId);
+
+  const response = await fetchWithApiActivity(`/api/holdings?${query.toString()}`, {
+    method: "DELETE",
   });
 
   return readJsonResponse<HoldingsPayload>(response);
