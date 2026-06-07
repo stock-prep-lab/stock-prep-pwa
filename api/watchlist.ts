@@ -1,25 +1,20 @@
 import {
-  handleDeleteHoldingRequest,
-  handleGetHoldingsRequest,
-  handleUpsertHoldingRequest,
+  handleAddWatchlistSymbolRequest,
+  handleRemoveWatchlistSymbolRequest,
 } from "../apps/web/src/server/stockPrepApiHandlers.js";
 
 export default {
   async fetch(request: Request): Promise<Response> {
-    if (request.method === "GET") {
-      return Response.json(await handleGetHoldingsRequest());
-    }
-
     if (request.method === "PUT") {
-      return Response.json(await handleUpsertHoldingRequest(await request.json()));
+      return Response.json(await handleAddWatchlistSymbolRequest(await request.json()));
     }
 
     if (request.method === "DELETE") {
-      const { searchParams } = new URL(request.url);
-      const symbolId = searchParams.get("symbolId");
+      const url = new URL(request.url);
+      const symbolId = url.searchParams.get("symbolId");
 
       if (!symbolId) {
-        return new Response(JSON.stringify({ error: "symbolId is required" }), {
+        return new Response(JSON.stringify({ error: "symbolId が必要です。" }), {
           headers: {
             "Content-Type": "application/json; charset=utf-8",
           },
@@ -27,12 +22,12 @@ export default {
         });
       }
 
-      return Response.json(await handleDeleteHoldingRequest(symbolId));
+      return Response.json(await handleRemoveWatchlistSymbolRequest(symbolId));
     }
 
     return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
       headers: {
-        "Allow": "GET, PUT, DELETE",
+        Allow: "PUT, DELETE",
         "Content-Type": "application/json; charset=utf-8",
       },
       status: 405,

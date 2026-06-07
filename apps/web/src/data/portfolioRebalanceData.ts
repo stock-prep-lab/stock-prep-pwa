@@ -5,6 +5,7 @@ import {
   type RebalancePlan,
 } from "@stock-prep/domain";
 import type { DailyPriceBar, PortfolioHolding, StoredStockSymbol } from "@stock-prep/shared";
+import type { RegionCode } from "@stock-prep/shared";
 
 import {
   createStockPrepDbRepository,
@@ -13,7 +14,7 @@ import {
 } from "../storage/stockPrepDb";
 import { notifyStockPrepDataChanged } from "./dataSyncEvents";
 import { persistHoldingsPayload } from "./dataSyncPersistence";
-import { upsertHolding } from "./syncApi";
+import { deleteHolding, upsertHolding } from "./syncApi";
 
 export type PortfolioLoadResult = {
   dailyPriceCount: number;
@@ -87,6 +88,7 @@ export async function loadRebalancePlanFromIndexedDb(): Promise<RebalanceLoadRes
 
 export async function loadHoldingFormTargetFromIndexedDb(
   symbolCode: string,
+  region?: RegionCode | null,
 ): Promise<HoldingFormTarget | null> {
   const db = await openStockPrepDb();
 
@@ -94,6 +96,11 @@ export async function loadHoldingFormTargetFromIndexedDb(
     const repository = createStockPrepDbRepository(db);
     const snapshot = await loadStockPrepSnapshot(repository);
     const symbol =
+      (region
+        ? snapshot.symbols.find(
+            (candidate) => candidate.code === symbolCode && candidate.region === region,
+          )
+        : null) ??
       snapshot.symbols.find((candidate) => candidate.code === symbolCode) ??
       snapshot.symbols.find((candidate) =>
         candidate.sourceSymbol.startsWith(symbolCode.toLowerCase()),
@@ -137,6 +144,12 @@ export async function saveHoldingToIndexedDb({
     symbolId,
   });
 
+  await persistHoldingsPayload(payload);
+  notifyStockPrepDataChanged();
+}
+
+export async function deleteHoldingFromIndexedDb(symbolId: string): Promise<void> {
+  const payload = await deleteHolding({ symbolId });
   await persistHoldingsPayload(payload);
   notifyStockPrepDataChanged();
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { buildStockDetailHref } from "../data/stockDetailHref";
+import { buildHoldingFormHref, buildStockDetailHref } from "../data/stockDetailHref";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 
 import type {
@@ -89,8 +89,7 @@ export function PortfolioPage() {
   const portfolio = portfolioState.status === "loaded" ? portfolioState.result.portfolio : null;
   const metrics = portfolio ? toPortfolioMetrics(portfolio) : [];
   const concentrationItems = portfolio ? toConcentrationItems(portfolio) : [];
-  const firstSymbolCode =
-    portfolio?.holdings.find((holding) => holding.symbol)?.symbol?.code ?? "7203";
+  const firstHoldingSymbol = portfolio?.holdings.find((holding) => holding.symbol)?.symbol ?? null;
 
   return (
     <section className="flex flex-col gap-8">
@@ -174,7 +173,14 @@ export function PortfolioPage() {
           <section className="flex flex-col gap-4" aria-labelledby="holdings-heading">
             <SectionHeader
               actionLabel="保有を追加"
-              actionTo={`/holdings/${firstSymbolCode}/edit`}
+              actionTo={
+                firstHoldingSymbol
+                  ? buildHoldingFormHref({
+                      code: firstHoldingSymbol.code,
+                      region: firstHoldingSymbol.region,
+                    })
+                  : buildHoldingFormHref({ code: "7203", region: "JP" })
+              }
               description="保有銘柄ごとの数量、評価額、損益を確認します。"
               title="保有一覧"
               titleId="holdings-heading"

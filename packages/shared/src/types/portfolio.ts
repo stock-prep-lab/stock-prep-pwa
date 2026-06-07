@@ -45,3 +45,7 @@ export type UpsertHoldingRequest = {
   quantity: number;
   symbolId: string;
 };
+
+export type DeleteHoldingRequest = {
+  symbolId: string;
+};

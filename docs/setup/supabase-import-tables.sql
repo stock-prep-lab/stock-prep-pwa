@@ -93,3 +93,19 @@ create table if not exists public.stock_prep_cash_balances (
   amount double precision not null,
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+create table if not exists public.stock_prep_watchlist (
+  symbol_id text primary key,
+  added_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists stock_prep_watchlist_added_at_idx
+  on public.stock_prep_watchlist (added_at desc);
+
+create table if not exists public.stock_prep_recent_symbols (
+  symbol_id text primary key,
+  viewed_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists stock_prep_recent_symbols_viewed_at_idx
+  on public.stock_prep_recent_symbols (viewed_at desc);
