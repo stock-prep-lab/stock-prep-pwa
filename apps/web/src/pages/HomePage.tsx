@@ -98,7 +98,7 @@ const rebalanceAlert: RebalanceAlert = {
 
 const marketImageUrl =
   "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=900&q=80";
-const userSymbolPageSize = 10;
+const userSymbolPageSize = 5;
 
 export function HomePage() {
   const [recentSymbols, setRecentSymbols] = useState<UserSymbolListItem[]>([]);
@@ -304,6 +304,7 @@ export function HomePage() {
               <PaginationControls
                 currentPage={recentPage}
                 onPageChange={setRecentPage}
+                pageSize={userSymbolPageSize}
                 totalItems={recentSymbols.length}
                 totalPages={recentTotalPages}
               />
@@ -336,6 +337,7 @@ export function HomePage() {
               <PaginationControls
                 currentPage={watchlistPage}
                 onPageChange={setWatchlistPage}
+                pageSize={userSymbolPageSize}
                 totalItems={watchlist.length}
                 totalPages={watchlistTotalPages}
               />

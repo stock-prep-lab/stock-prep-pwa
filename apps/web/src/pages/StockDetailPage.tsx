@@ -167,6 +167,7 @@ export function StockDetailPage() {
   const [chartVisibility, setChartVisibility] = useState<StockDetailChartVisibility>(
     defaultStockDetailChartVisibility,
   );
+  const detailRef = useRef<StockDetailPageData | null>(null);
   const lastRecordedSymbolIdRef = useRef<string | null>(null);
   const [symbolFlags, setSymbolFlags] = useState({
     isHeld: false,
@@ -197,27 +198,34 @@ export function StockDetailPage() {
   useEffect(() => {
     let active = true;
 
-    async function load() {
+    async function sync({ refreshDetail }: { refreshDetail: boolean }) {
       if (!symbolCode) {
         if (active) {
+          detailRef.current = null;
           setState({ status: "not-found" });
         }
         return;
       }
 
-      setState({ status: "loading" });
+      if (refreshDetail) {
+        setState({ status: "loading" });
+      }
 
       try {
-        const detail = await loadStockDetailPageData({
-          region: region as RegionCode | null,
-          symbolCode,
-        });
+        const detail =
+          refreshDetail || detailRef.current === null
+            ? await loadStockDetailPageData({
+                region: region as RegionCode | null,
+                symbolCode,
+              })
+            : detailRef.current;
 
         if (!active) {
           return;
         }
 
         if (!detail) {
+          detailRef.current = null;
           setState({ status: "not-found" });
           return;
         }
@@ -229,18 +237,23 @@ export function StockDetailPage() {
           return;
         }
 
+        detailRef.current = detail;
         setSymbolFlags(nextFlags);
-        setChartVisibility({
-          ...defaultStockDetailChartVisibility,
-          buyPrice: detail.holding !== null,
-          stopLoss: false,
-        });
-        setState({ detail, status: "loaded" });
+
+        if (refreshDetail) {
+          setChartVisibility({
+            ...defaultStockDetailChartVisibility,
+            buyPrice: detail.holding !== null,
+            stopLoss: false,
+          });
+          setState({ detail, status: "loaded" });
+        }
       } catch (error) {
         if (!active) {
           return;
         }
 
+        detailRef.current = null;
         setState({
           error: error instanceof Error ? error.message : "銘柄詳細を読み込めませんでした。",
           status: "error",
@@ -248,12 +261,12 @@ export function StockDetailPage() {
       }
     }
 
-    void load();
+    void sync({ refreshDetail: true });
     const unsubscribeData = subscribeToStockPrepDataChanged(() => {
-      void load();
+      void sync({ refreshDetail: true });
     });
     const unsubscribeUserSymbols = subscribeToUserSymbolsChanged(() => {
-      void load();
+      void sync({ refreshDetail: false });
     });
 
     return () => {

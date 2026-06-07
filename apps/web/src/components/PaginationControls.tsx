@@ -1,6 +1,7 @@
 type PaginationControlsProps = {
   currentPage: number;
   onPageChange: (page: number) => void;
+  pageSize: number;
   totalItems: number;
   totalPages: number;
 };
@@ -8,6 +9,7 @@ type PaginationControlsProps = {
 export function PaginationControls({
   currentPage,
   onPageChange,
+  pageSize,
   totalItems,
   totalPages,
 }: PaginationControlsProps) {
@@ -18,7 +20,7 @@ export function PaginationControls({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600">
       <p>
-        {totalItems.toLocaleString("ja-JP")}件中 {pageRangeLabel(currentPage, totalItems)}
+        {totalItems.toLocaleString("ja-JP")}件中 {pageRangeLabel(currentPage, pageSize, totalItems)}
       </p>
       <div className="flex items-center gap-2">
         <button
@@ -49,8 +51,7 @@ export function PaginationControls({
   );
 }
 
-function pageRangeLabel(currentPage: number, totalItems: number): string {
-  const pageSize = 10;
+function pageRangeLabel(currentPage: number, pageSize: number, totalItems: number): string {
   const start = (currentPage - 1) * pageSize + 1;
   const end = Math.min(currentPage * pageSize, totalItems);
 

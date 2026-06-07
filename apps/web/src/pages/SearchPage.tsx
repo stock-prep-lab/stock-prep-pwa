@@ -47,7 +47,7 @@ const regionFilters: Array<{ label: string; value: SearchRegionFilter }> = [
   { label: formatRegionLabel("US"), value: "US" },
   { label: formatRegionLabel("HK"), value: "HK" },
 ];
-const userSymbolPageSize = 10;
+const userSymbolPageSize = 5;
 
 export function SearchPage() {
   const [draftQuery, setDraftQuery] = useState("");
@@ -244,6 +244,7 @@ export function SearchPage() {
               <PaginationControls
                 currentPage={recentPage}
                 onPageChange={setRecentPage}
+                pageSize={userSymbolPageSize}
                 totalItems={recentSymbols.length}
                 totalPages={recentTotalPages}
               />
@@ -275,6 +276,7 @@ export function SearchPage() {
               <PaginationControls
                 currentPage={watchlistPage}
                 onPageChange={setWatchlistPage}
+                pageSize={userSymbolPageSize}
                 totalItems={watchlist.length}
                 totalPages={watchlistTotalPages}
               />
