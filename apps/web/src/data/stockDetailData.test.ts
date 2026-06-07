@@ -4,8 +4,10 @@ import type { StockDetailPayload } from "@stock-prep/shared";
 
 import {
   buildStockDetailPageData,
+  buildStockDetailPageDataWithSettings,
   defaultStopLossRatio,
 } from "./stockDetailData";
+import { defaultChartSettings } from "./chartSettings";
 
 describe("stockDetailData", () => {
   it("builds moving averages and overlay lines from history", () => {
@@ -71,11 +73,65 @@ describe("stockDetailData", () => {
       "75MA",
       "一目均衡表",
       "RSI(14)",
-      "ストキャスティクス",
+      "ストキャスティクス(14,3)",
       "MACD(12,26,9)",
       "ボリンジャー(20,±2σ)",
     ]);
     expect(detail.insightSections.length).toBeGreaterThan(0);
     expect(detail.priceMetrics[0]?.label).toBe("終値");
+  });
+
+  it("applies saved chart settings to stop loss and recent-high calculations", () => {
+    const payload: StockDetailPayload = {
+      datasetVersion: "market-data-2026-05-09",
+      generatedAt: "2026-05-09T09:00:00.000Z",
+      holding: {
+        averagePrice: 100,
+        currency: "JPY",
+        id: "holding-jp-7203",
+        quantity: 10,
+        symbolId: "jp-7203",
+        updatedAt: "2026-05-09T09:00:00.000Z",
+      },
+      importStatus: "ready",
+      latestExchangeRate: null,
+      priceHistory: Array.from({ length: 260 }, (_, index) => {
+        const close = index < 20 ? 320 - index : 150 + (index % 40);
+
+        return {
+          close,
+          currency: "JPY" as const,
+          date: `2025-${String(Math.floor(index / 21) + 1).padStart(2, "0")}-${String((index % 21) + 1).padStart(2, "0")}`,
+          high: close + 3,
+          id: `jp-7203-${index}`,
+          low: close - 2,
+          open: close - 1,
+          region: "JP" as const,
+          sourceSymbol: "7203.jp",
+          symbolId: "jp-7203",
+          volume: 1_000 + index,
+        };
+      }).sort((left, right) => left.date.localeCompare(right.date)),
+      symbol: {
+        code: "7203",
+        currency: "JPY",
+        id: "jp-7203",
+        lastClose: 369,
+        lastCloseDate: "2025-12-08",
+        name: "7203",
+        region: "JP",
+        securityType: "stock",
+        sourceSymbol: "7203.jp",
+      },
+    };
+
+    const detail = buildStockDetailPageDataWithSettings(payload, {
+      ...defaultChartSettings,
+      recentHighLookbackTradingDays: 60,
+      stopLossPercent: 12,
+    });
+
+    expect(detail.chartData.stopLoss?.[0]?.value).toBe(88);
+    expect(detail.chartData.recentHigh?.at(-1)?.value).toBeLessThan(320);
   });
 });

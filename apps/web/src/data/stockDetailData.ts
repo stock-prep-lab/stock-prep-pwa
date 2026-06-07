@@ -1,4 +1,6 @@
 import type {
+  ChartSettings,
+  ChartSettingsVisibility,
   DailyPriceBar,
   PortfolioHolding,
   RegionCode,
@@ -8,36 +10,21 @@ import type {
 } from "@stock-prep/shared";
 
 import { formatPriceCurrency } from "./priceFormat";
+import {
+  buildChartSettingsLabels,
+  defaultChartSettings,
+  defaultChartSettingsVisibility,
+  toStopLossRatio,
+} from "./chartSettings";
 import { createStockPrepDbRepository, openStockPrepDb } from "../storage/stockPrepDb";
 import { fetchStockDetail } from "./syncApi";
 
-export const defaultStopLossRatio = 0.92;
+export const defaultStopLossRatio = toStopLossRatio(defaultChartSettings.stopLossPercent);
 
-export type StockDetailChartVisibility = {
-  bollinger: boolean;
-  buyPrice: boolean;
-  ichimoku: boolean;
-  macd: boolean;
-  ma25: boolean;
-  ma75: boolean;
-  recentHigh: boolean;
-  rsi: boolean;
-  stopLoss: boolean;
-  stochastic: boolean;
-};
+export type StockDetailChartVisibility = ChartSettingsVisibility;
 
-export const defaultStockDetailChartVisibility: StockDetailChartVisibility = {
-  bollinger: false,
-  buyPrice: true,
-  ichimoku: false,
-  macd: false,
-  ma25: true,
-  ma75: true,
-  recentHigh: false,
-  rsi: false,
-  stopLoss: false,
-  stochastic: false,
-};
+export const defaultStockDetailChartVisibility: StockDetailChartVisibility =
+  defaultChartSettingsVisibility;
 
 export type StockDetailMetric = {
   label: string;
@@ -150,6 +137,7 @@ type ResolvedIchimokuState = {
 };
 
 export type StockDetailPageData = {
+  appliedChartSettings: ChartSettings;
   chartData: StockDetailChartData;
   datasetVersion: string;
   generatedAt: string;
@@ -165,6 +153,7 @@ export type StockDetailPageData = {
 
 export async function loadStockDetailPageData(
   request: StockDetailRequest,
+  chartSettings: ChartSettings = defaultChartSettings,
 ): Promise<StockDetailPageData | null> {
   const cachedSymbol = await loadCachedSymbol(request);
 
@@ -177,7 +166,7 @@ export async function loadStockDetailPageData(
       { activity: "background" },
     );
 
-    return buildStockDetailPageData(payload);
+    return buildStockDetailPageDataWithSettings(payload, chartSettings);
   } catch (error) {
     if (error instanceof Error && error.message.includes("404")) {
       return null;
@@ -188,6 +177,13 @@ export async function loadStockDetailPageData(
 }
 
 export function buildStockDetailPageData(payload: StockDetailPayload): StockDetailPageData {
+  return buildStockDetailPageDataWithSettings(payload, defaultChartSettings);
+}
+
+export function buildStockDetailPageDataWithSettings(
+  payload: StockDetailPayload,
+  chartSettings: ChartSettings,
+): StockDetailPageData {
   const history = sortPriceHistory(payload.priceHistory);
   const latestBar = history.at(-1) ?? null;
   const previousBar = history.at(-2) ?? null;
@@ -197,16 +193,30 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
     priceChange !== null && previousBar && previousBar.close > 0
       ? (priceChange / previousBar.close) * 100
       : null;
-  const trailingHistory = history.slice(-252);
+  const trailingHistory = history.slice(-chartSettings.recentHighLookbackTradingDays);
   const week52High = getMaxValue(trailingHistory.map((bar) => bar.high));
   const week52Low = getMinValue(trailingHistory.map((bar) => bar.low));
-  const ma25Values = calculateSimpleMovingAverage(history, 25);
-  const ma75Values = calculateSimpleMovingAverage(history, 75);
+  const ma25Values = calculateSimpleMovingAverage(history, chartSettings.maShortPeriod);
+  const ma75Values = calculateSimpleMovingAverage(history, chartSettings.maLongPeriod);
   const ichimokuValues = calculateIchimoku(history);
-  const rsi14Values = calculateRsi(history, 14);
-  const stochastic14Values = calculateStochastics(history, 14, 3);
-  const bollinger20Values = calculateBollingerBands(history, 20, 2);
-  const macdValues = calculateMacd(history, 12, 26, 9);
+  const rsi14Values = calculateRsi(history, chartSettings.rsiPeriod);
+  const stochastic14Values = calculateStochastics(
+    history,
+    chartSettings.stochasticPeriod,
+    chartSettings.stochasticSignalPeriod,
+  );
+  const bollinger20Values = calculateBollingerBands(
+    history,
+    chartSettings.bollingerPeriod,
+    chartSettings.bollingerStandardDeviations,
+  );
+  const macdValues = calculateMacd(
+    history,
+    chartSettings.macdFastPeriod,
+    chartSettings.macdSlowPeriod,
+    chartSettings.macdSignalPeriod,
+  );
+  const chartSettingsLabels = buildChartSettingsLabels(chartSettings);
   const ma25Latest = ma25Values.at(-1)?.value ?? null;
   const ma25Previous = ma25Values.at(-2)?.value ?? null;
   const ma75Latest = ma75Values.at(-1)?.value ?? null;
@@ -223,7 +233,9 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
   });
   const recentHighValue = getMaxValue(trailingHistory.map((bar) => bar.high));
   const buyPrice = payload.holding?.averagePrice ?? null;
-  const stopLossPrice = buyPrice ? roundToPriceTick(buyPrice * defaultStopLossRatio) : null;
+  const stopLossPrice = buyPrice
+    ? roundToPriceTick(buyPrice * toStopLossRatio(chartSettings.stopLossPercent))
+    : null;
   const trendContext = resolveTrendContext({
     currentClose,
     ma25Latest,
@@ -245,6 +257,7 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
   });
 
   return {
+    appliedChartSettings: chartSettings,
     chartData,
     datasetVersion: payload.datasetVersion,
     generatedAt: payload.generatedAt,
@@ -253,6 +266,7 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
     insightSections: buildInsightSections({
       buyPrice,
       bollinger: latestBollinger,
+      chartSettingsLabels,
       currency: payload.symbol.currency,
       currentClose,
       ichimoku: latestIchimoku,
@@ -333,12 +347,12 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
       {
         description:
           ma25Latest === null
-            ? "25営業日分のデータがまだ足りません。"
+            ? `${chartSettings.maShortPeriod}営業日分のデータがまだ足りません。`
             : ma25Previous !== null && ma25Latest > ma25Previous
-              ? "25MA が上向きで、短期トレンドは改善中です。"
-              : "25MA は横ばい〜下向きで、勢いはまだ限定的です。",
+              ? `${chartSettingsLabels.maShort} が上向きで、短期トレンドは改善中です。`
+              : `${chartSettingsLabels.maShort} は横ばい〜下向きで、勢いはまだ限定的です。`,
         group: "trend",
-        label: "25MA",
+        label: chartSettingsLabels.maShort,
         tone:
           ma25Latest !== null && currentClose !== null && currentClose >= ma25Latest ? "positive" : "warning",
         value:
@@ -347,12 +361,12 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
       {
         description:
           ma75Latest === null
-            ? "75営業日分のデータがまだ足りません。"
+            ? `${chartSettings.maLongPeriod}営業日分のデータがまだ足りません。`
             : currentClose !== null && currentClose >= ma75Latest
-              ? "75MA の上で推移していて、中期トレンドは維持されています。"
-              : "75MA を下回っていて、中期トレンドは慎重に見たい状態です。",
+              ? `${chartSettingsLabels.maLong} の上で推移していて、中期トレンドは維持されています。`
+              : `${chartSettingsLabels.maLong} を下回っていて、中期トレンドは慎重に見たい状態です。`,
         group: "trend",
-        label: "75MA",
+        label: chartSettingsLabels.maLong,
         tone:
           ma75Latest !== null && currentClose !== null && currentClose >= ma75Latest ? "positive" : "neutral",
         value:
@@ -372,11 +386,12 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
       {
         description: buildRsiDescription({
           previousRsi: rsi14Previous,
+          period: chartSettings.rsiPeriod,
           rsi: rsi14Latest,
           trendContext,
         }),
         group: "oscillator",
-        label: "RSI(14)",
+        label: chartSettingsLabels.rsi,
         tone: resolveRsiTone({
           previousRsi: rsi14Previous,
           rsi: rsi14Latest,
@@ -387,11 +402,13 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
       {
         description: buildStochasticDescription({
           latest: latestStochastic,
+          period: chartSettings.stochasticPeriod,
+          signalPeriod: chartSettings.stochasticSignalPeriod,
           previous: previousStochastic,
           trendContext,
         }),
         group: "oscillator",
-        label: "ストキャスティクス",
+        label: chartSettingsLabels.stochastic,
         tone: resolveStochasticTone({
           latest: latestStochastic,
           previous: previousStochastic,
@@ -401,11 +418,14 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
       },
       {
         description: buildMacdDescription({
+          fastPeriod: chartSettings.macdFastPeriod,
           latest: latestMacd,
           previous: previousMacd,
+          signalPeriod: chartSettings.macdSignalPeriod,
+          slowPeriod: chartSettings.macdSlowPeriod,
         }),
         group: "trend",
-        label: "MACD(12,26,9)",
+        label: chartSettingsLabels.macd,
         tone: resolveMacdTone({
           latest: latestMacd,
           previous: previousMacd,
@@ -415,11 +435,13 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
       {
         description: buildBollingerDescription({
           bollinger: latestBollinger,
+          period: chartSettings.bollingerPeriod,
+          standardDeviations: chartSettings.bollingerStandardDeviations,
           currentClose,
           trendContext,
         }),
         group: "trend",
-        label: "ボリンジャー(20,±2σ)",
+        label: chartSettingsLabels.bollinger,
         tone: resolveBollingerTone({
           bollinger: latestBollinger,
           currentClose,
@@ -511,6 +533,7 @@ function buildConstantLine(times: string[], value: number): StockDetailChartPoin
 function buildInsightSections({
   buyPrice,
   bollinger,
+  chartSettingsLabels,
   currency,
   currentClose,
   ichimoku,
@@ -528,6 +551,7 @@ function buildInsightSections({
 }: {
   buyPrice: number | null;
   bollinger: BollingerBandPoint | null;
+  chartSettingsLabels: ReturnType<typeof buildChartSettingsLabels>;
   currency: StockDetailPayload["symbol"]["currency"];
   currentClose: number | null;
   ichimoku: ResolvedIchimokuState | null;
@@ -550,8 +574,8 @@ function buildInsightSections({
   if (currentClose !== null && ma25Latest !== null) {
     trendLines.push(
       currentClose >= ma25Latest
-        ? "終値は 25MA の上にあり、短期の勢いは保たれています。"
-        : "終値は 25MA の下にあり、反発確認までは慎重に見ます。",
+        ? `終値は ${chartSettingsLabels.maShort} の上にあり、短期の勢いは保たれています。`
+        : `終値は ${chartSettingsLabels.maShort} の下にあり、反発確認までは慎重に見ます。`,
     );
   }
 
@@ -1172,16 +1196,18 @@ function formatIchimokuValue(ichimoku: ResolvedIchimokuState | null): string {
 }
 
 function buildRsiDescription({
+  period,
   previousRsi,
   rsi,
   trendContext,
 }: {
+  period: number;
   previousRsi: number | null;
   rsi: number | null;
   trendContext: TrendContext;
 }): string {
   if (rsi === null) {
-    return "14営業日分のデータがまだ足りず、RSI を計算できません。";
+    return `${period}営業日分のデータがまだ足りず、RSI を計算できません。`;
   }
 
   if (trendContext === "uptrend" && rsi >= 40 && rsi <= 50 && previousRsi !== null && rsi > previousRsi) {
@@ -1255,15 +1281,19 @@ function formatRsiValue(value: number | null): string {
 
 function buildStochasticDescription({
   latest,
+  period,
   previous,
+  signalPeriod,
   trendContext,
 }: {
   latest: StochasticPoint | null;
+  period: number;
   previous: StochasticPoint | null;
+  signalPeriod: number;
   trendContext: TrendContext;
 }): string {
   if (latest === null) {
-    return "ストキャスティクスを計算できるだけの履歴がまだ足りません。";
+    return `${period}営業日・シグナル${signalPeriod}本のストキャスティクスを計算できるだけの履歴がまだ足りません。`;
   }
 
   if (
@@ -1340,14 +1370,20 @@ function formatStochasticValue(value: StochasticPoint | null): string {
 }
 
 function buildMacdDescription({
+  fastPeriod,
   latest,
   previous,
+  signalPeriod,
+  slowPeriod,
 }: {
+  fastPeriod: number;
   latest: MacdPoint | null;
   previous: MacdPoint | null;
+  signalPeriod: number;
+  slowPeriod: number;
 }): string {
   if (latest === null) {
-    return "MACD を計算できるだけの履歴がまだ足りません。";
+    return `MACD(${fastPeriod},${slowPeriod},${signalPeriod}) を計算できるだけの履歴がまだ足りません。`;
   }
 
   const crossover =
@@ -1407,14 +1443,21 @@ function formatMacdValue(value: MacdPoint | null): string {
 function buildBollingerDescription({
   bollinger,
   currentClose,
+  period,
+  standardDeviations,
   trendContext,
 }: {
   bollinger: BollingerBandPoint | null;
   currentClose: number | null;
+  period: number;
+  standardDeviations: number;
   trendContext: TrendContext;
 }): string {
   if (bollinger === null || currentClose === null) {
-    return "ボリンジャーバンドを計算できるだけの履歴がまだ足りません。";
+    const sigmaText = Number.isInteger(standardDeviations)
+      ? standardDeviations.toFixed(0)
+      : standardDeviations.toFixed(1);
+    return `ボリンジャーバンド(${period},±${sigmaText}σ) を計算できるだけの履歴がまだ足りません。`;
   }
 
   if (trendContext === "uptrend" && currentClose >= bollinger.upper * 0.99) {

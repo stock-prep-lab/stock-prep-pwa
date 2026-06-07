@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 
 import type { RegionCode } from "@stock-prep/shared";
 
 import { StockDetailChart } from "../components/StockDetailChart";
 import { UserSymbolBadges } from "../components/UserSymbolBadges";
 import { WatchToggleButton } from "../components/WatchToggleButton";
+import {
+  buildChartSettingsLabels,
+  buildInitialChartVisibility,
+  loadChartSettings,
+} from "../data/chartSettings";
 import {
   defaultStockDetailChartVisibility,
   loadStockDetailPageData,
@@ -31,62 +36,6 @@ type StockDetailState =
   | { status: "loaded"; detail: StockDetailPageData }
   | { status: "loading" }
   | { status: "not-found" };
-
-const toggleSections: Array<{
-  items: Array<{ id: keyof StockDetailChartVisibility; label: string }>;
-  title: string;
-}> = [
-  {
-    items: [
-      { id: "ma25", label: "25MA" },
-      { id: "ma75", label: "75MA" },
-      { id: "ichimoku", label: "一目均衡表" },
-      { id: "bollinger", label: "ボリンジャー" },
-      { id: "macd", label: "MACD(12,26,9)" },
-      { id: "recentHigh", label: "直近高値ライン" },
-      { id: "buyPrice", label: "買値ライン" },
-      { id: "stopLoss", label: "損切りライン" },
-    ],
-    title: "トレンド分析",
-  },
-  {
-    items: [
-      { id: "rsi", label: "RSI(14)" },
-      { id: "stochastic", label: "ストキャスティクス" },
-    ],
-    title: "オシレーター分析",
-  },
-];
-
-const compactLegendItems: Array<{
-  colorClass: string;
-  id?: keyof StockDetailChartVisibility;
-  label: string;
-}> = [
-  { colorClass: "bg-teal-700", id: "ma25", label: "25MA" },
-  { colorClass: "bg-amber-600", id: "ma75", label: "75MA" },
-  { colorClass: "bg-blue-600", id: "ichimoku", label: "一目 転換" },
-  { colorClass: "bg-violet-600", id: "ichimoku", label: "一目 基準" },
-  { colorClass: "bg-green-600", id: "ichimoku", label: "一目 先A" },
-  { colorClass: "bg-red-600", id: "ichimoku", label: "一目 先B" },
-  { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 上" },
-  { colorClass: "bg-indigo-300", id: "bollinger", label: "BB 中" },
-  { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 下" },
-  { colorClass: "bg-fuchsia-600", id: "rsi", label: "RSI 本体" },
-  { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 70" },
-  { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 30" },
-  { colorClass: "bg-emerald-700", id: "stochastic", label: "ストキャス %K" },
-  { colorClass: "bg-amber-600", id: "stochastic", label: "ストキャス %D" },
-  { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 80" },
-  { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 20" },
-  { colorClass: "bg-blue-600", id: "macd", label: "MACD 本体" },
-  { colorClass: "bg-orange-500", id: "macd", label: "MACD Signal" },
-  { colorClass: "bg-emerald-700", id: "macd", label: "MACD Hist+" },
-  { colorClass: "bg-amber-600", id: "macd", label: "MACD Hist-" },
-  { colorClass: "bg-zinc-500", id: "recentHigh", label: "高値" },
-  { colorClass: "bg-blue-500", id: "buyPrice", label: "買値" },
-  { colorClass: "bg-red-600", id: "stopLoss", label: "損切り" },
-];
 
 const trendSignalHelpMap: Record<
   string,
@@ -160,7 +109,96 @@ const trendSignalHelpMap: Record<
   },
 };
 
+function buildToggleSections(detail: StockDetailPageData): Array<{
+  items: Array<{ id: keyof StockDetailChartVisibility; label: string }>;
+  title: string;
+}> {
+  const labels = buildChartSettingsLabels(detail.appliedChartSettings);
+
+  return [
+    {
+      items: [
+        { id: "ma25", label: labels.maShort },
+        { id: "ma75", label: labels.maLong },
+        { id: "ichimoku", label: "一目均衡表" },
+        { id: "bollinger", label: labels.bollinger },
+        { id: "macd", label: labels.macd },
+        { id: "recentHigh", label: `${labels.recentHigh}ライン` },
+        { id: "buyPrice", label: "買値ライン" },
+        { id: "stopLoss", label: "損切りライン" },
+      ],
+      title: "トレンド分析",
+    },
+    {
+      items: [
+        { id: "rsi", label: labels.rsi },
+        { id: "stochastic", label: labels.stochastic },
+      ],
+      title: "オシレーター分析",
+    },
+  ];
+}
+
+function buildCompactLegendItems(detail: StockDetailPageData): Array<{
+  colorClass: string;
+  id?: keyof StockDetailChartVisibility;
+  label: string;
+}> {
+  const labels = buildChartSettingsLabels(detail.appliedChartSettings);
+
+  return [
+    { colorClass: "bg-teal-700", id: "ma25", label: labels.maShort },
+    { colorClass: "bg-amber-600", id: "ma75", label: labels.maLong },
+    { colorClass: "bg-blue-600", id: "ichimoku", label: "一目 転換" },
+    { colorClass: "bg-violet-600", id: "ichimoku", label: "一目 基準" },
+    { colorClass: "bg-green-600", id: "ichimoku", label: "一目 先A" },
+    { colorClass: "bg-red-600", id: "ichimoku", label: "一目 先B" },
+    { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 上" },
+    { colorClass: "bg-indigo-300", id: "bollinger", label: "BB 中" },
+    { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 下" },
+    { colorClass: "bg-fuchsia-600", id: "rsi", label: "RSI 本体" },
+    { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 70" },
+    { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 30" },
+    { colorClass: "bg-emerald-700", id: "stochastic", label: "ストキャス %K" },
+    { colorClass: "bg-amber-600", id: "stochastic", label: "ストキャス %D" },
+    { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 80" },
+    { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 20" },
+    { colorClass: "bg-blue-600", id: "macd", label: "MACD 本体" },
+    { colorClass: "bg-orange-500", id: "macd", label: "MACD Signal" },
+    { colorClass: "bg-emerald-700", id: "macd", label: "MACD Hist+" },
+    { colorClass: "bg-amber-600", id: "macd", label: "MACD Hist-" },
+    { colorClass: "bg-zinc-500", id: "recentHigh", label: "高値" },
+    { colorClass: "bg-blue-500", id: "buyPrice", label: "買値" },
+    { colorClass: "bg-red-600", id: "stopLoss", label: "損切り" },
+  ];
+}
+
+function resolveTrendSignalHelp(label: string) {
+  if (label.endsWith("MA")) {
+    return trendSignalHelpMap["25MA"];
+  }
+
+  if (label.startsWith("RSI(")) {
+    return trendSignalHelpMap["RSI(14)"];
+  }
+
+  if (label.startsWith("MACD(")) {
+    return trendSignalHelpMap["MACD(12,26,9)"];
+  }
+
+  if (label.startsWith("ボリンジャー(")) {
+    return trendSignalHelpMap["ボリンジャー(20,±2σ)"];
+  }
+
+  if (label.startsWith("ストキャスティクス(")) {
+    return trendSignalHelpMap["ストキャスティクス"];
+  }
+
+  return trendSignalHelpMap[label] ?? null;
+}
+
 export function StockDetailPage() {
+  const location = useLocation();
   const { symbolCode } = useParams();
   const [searchParams] = useSearchParams();
   const [state, setState] = useState<StockDetailState>({ status: "loading" });
@@ -180,6 +218,9 @@ export function StockDetailPage() {
     regionParam === "JP" || regionParam === "US" || regionParam === "HK"
       ? regionParam
       : null;
+  const chartSettingsHref = `/settings/chart?returnTo=${encodeURIComponent(
+    `${location.pathname}${location.search}`,
+  )}`;
 
   async function handleToggleWatchSymbol(symbolId: string, isWatched: boolean) {
     try {
@@ -212,12 +253,16 @@ export function StockDetailPage() {
       }
 
       try {
+        const detailSettings = refreshDetail ? await loadChartSettings() : null;
         const detail =
           refreshDetail || detailRef.current === null
-            ? await loadStockDetailPageData({
-                region: region as RegionCode | null,
-                symbolCode,
-              })
+            ? await loadStockDetailPageData(
+                {
+                  region: region as RegionCode | null,
+                  symbolCode,
+                },
+                detailSettings ?? undefined,
+              )
             : detailRef.current;
 
         if (!active) {
@@ -241,11 +286,12 @@ export function StockDetailPage() {
         setSymbolFlags(nextFlags);
 
         if (refreshDetail) {
-          setChartVisibility({
-            ...defaultStockDetailChartVisibility,
-            buyPrice: detail.holding !== null,
-            stopLoss: false,
-          });
+          setChartVisibility(
+            buildInitialChartVisibility(
+              detailSettings?.visibility ?? defaultStockDetailChartVisibility,
+              detail.holding !== null,
+            ),
+          );
           setState({ detail, status: "loaded" });
         }
       } catch (error) {
@@ -300,6 +346,7 @@ export function StockDetailPage() {
       ) : (
         <LoadedStockDetail
           chartVisibility={chartVisibility}
+          chartSettingsHref={chartSettingsHref}
           detail={state.detail}
           isWatched={symbolFlags.isWatched}
           onToggleWatch={() => {
@@ -320,6 +367,7 @@ export function StockDetailPage() {
 
 function LoadedStockDetail({
   chartVisibility,
+  chartSettingsHref,
   detail,
   isWatched,
   onToggle,
@@ -327,6 +375,7 @@ function LoadedStockDetail({
   symbolFlags,
 }: {
   chartVisibility: StockDetailChartVisibility;
+  chartSettingsHref: string;
   detail: StockDetailPageData;
   isWatched: boolean;
   onToggle: (toggleId: keyof StockDetailChartVisibility) => void;
@@ -424,11 +473,19 @@ function LoadedStockDetail({
       </section>
 
       <section className="flex flex-col gap-4" aria-labelledby="chart-heading">
-        <SectionHeader
-          description="ローソク足と出来高に、トレンド系とオシレーター系の指標を重ねて確認します。"
-          title="チャート"
-          titleId="chart-heading"
-        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <SectionHeader
+            description="ローソク足と出来高に、トレンド系とオシレーター系の指標を重ねて確認します。"
+            title="チャート"
+            titleId="chart-heading"
+          />
+          <Link
+            className="inline-flex min-h-10 items-center rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-teal-700 hover:text-teal-700"
+            to={chartSettingsHref}
+          >
+            チャート設定
+          </Link>
+        </div>
 
         {detail.chartData.candlesticks.length === 0 ? (
           <StatusPanel message="この銘柄はまだ日足履歴がありません。" />
@@ -440,7 +497,7 @@ function LoadedStockDetail({
             </div>
 
             <div className="mt-4 grid gap-4 border-t border-zinc-200 pt-4">
-              {toggleSections.map((section) => (
+              {buildToggleSections(detail).map((section) => (
                 <div className="grid gap-3" key={section.title}>
                   <p className="text-sm font-medium text-zinc-600">{section.title}</p>
                   <div className="flex flex-wrap gap-3">
@@ -561,7 +618,7 @@ function LoadedStockDetail({
       </section>
 
       <TrendHelpModal
-        content={activeHelpLabel ? trendSignalHelpMap[activeHelpLabel] ?? null : null}
+        content={activeHelpLabel ? resolveTrendSignalHelp(activeHelpLabel) : null}
         label={activeHelpLabel}
         onClose={() => {
           setActiveHelpLabel(null);
@@ -609,7 +666,7 @@ function CompactChartLegend({
   detail: StockDetailPageData;
   visibility: StockDetailChartVisibility;
 }) {
-  const activeItems = compactLegendItems.filter((item) => {
+  const activeItems = buildCompactLegendItems(detail).filter((item) => {
     if (!item.id) {
       return true;
     }

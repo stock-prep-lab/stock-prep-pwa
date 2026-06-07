@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type {
   CashBalance,
+  ChartSettings,
   DailyPriceBar,
   ExchangeRateBar,
   PortfolioHolding,
@@ -86,6 +87,34 @@ describe("stockPrepDb", () => {
       currency: "JPY",
       updatedAt: "2026-04-17T15:00:00+09:00",
     };
+    const chartSettings: ChartSettings = {
+      bollingerPeriod: 20,
+      bollingerStandardDeviations: 2,
+      id: "chart-settings",
+      maLongPeriod: 75,
+      maShortPeriod: 25,
+      macdFastPeriod: 12,
+      macdSignalPeriod: 9,
+      macdSlowPeriod: 26,
+      recentHighLookbackTradingDays: 252,
+      rsiPeriod: 14,
+      stochasticPeriod: 14,
+      stochasticSignalPeriod: 3,
+      stopLossPercent: 8,
+      updatedAt: "2026-04-18T09:10:00+09:00",
+      visibility: {
+        bollinger: false,
+        buyPrice: true,
+        ichimoku: false,
+        macd: false,
+        ma25: true,
+        ma75: true,
+        recentHigh: false,
+        rsi: false,
+        stopLoss: false,
+        stochastic: false,
+      },
+    };
     const syncState: StoredSyncState = {
       datasetVersion: "server-market-v1",
       id: "market-data",
@@ -106,6 +135,7 @@ describe("stockPrepDb", () => {
     await repository.putHolding(holding);
     await repository.putRecentSymbol(recentSymbol);
     await repository.putCashBalance(cashBalance);
+    await repository.putChartSettings(chartSettings);
     await repository.putSyncState(syncState);
     await repository.putWatchlistSymbol(watchlistSymbol);
 
@@ -116,6 +146,7 @@ describe("stockPrepDb", () => {
     await expect(repository.getHolding("holding-jp-7203")).resolves.toEqual(holding);
     await expect(repository.getRecentSymbol("jp-7203")).resolves.toEqual(recentSymbol);
     await expect(repository.getCashBalance("JPY")).resolves.toEqual(cashBalance);
+    await expect(repository.getChartSettings("chart-settings")).resolves.toEqual(chartSettings);
     await expect(repository.getSyncState("market-data")).resolves.toEqual(syncState);
     await expect(repository.getWatchlistSymbol("jp-7203")).resolves.toEqual(watchlistSymbol);
   });

@@ -1,5 +1,6 @@
 import type {
   CashBalance,
+  ChartSettings,
   DailyPriceBar,
   ExchangeRateBar,
   PortfolioHolding,
@@ -13,10 +14,11 @@ import type {
 import { dummyStockPrepSnapshot } from "../data/seedSnapshot";
 
 export const STOCK_PREP_DB_NAME = "stock-prep-lab";
-export const STOCK_PREP_DB_VERSION = 3;
+export const STOCK_PREP_DB_VERSION = 4;
 
 export const stockPrepStores = {
   cash: "cash",
+  chartSettings: "chartSettings",
   dailyPrices: "dailyPrices",
   exchangeRates: "exchangeRates",
   holdings: "holdings",
@@ -37,6 +39,7 @@ export type StockPrepDbRepository = {
   close: () => void;
   deleteWatchlistSymbol: (symbolId: WatchlistSymbolRecord["symbolId"]) => Promise<void>;
   getCashBalance: (currency: CashBalance["currency"]) => Promise<CashBalance | null>;
+  getChartSettings: (id: ChartSettings["id"]) => Promise<ChartSettings | null>;
   getDailyPrice: (id: DailyPriceBar["id"]) => Promise<DailyPriceBar | null>;
   getExchangeRate: (id: ExchangeRateBar["id"]) => Promise<ExchangeRateBar | null>;
   getHolding: (id: PortfolioHolding["id"]) => Promise<PortfolioHolding | null>;
@@ -59,6 +62,7 @@ export type StockPrepDbRepository = {
   listWatchlistSymbols: () => Promise<WatchlistSymbolRecord[]>;
   putSyncState: (syncState: StoredSyncState) => Promise<void>;
   putCashBalance: (cashBalance: CashBalance) => Promise<void>;
+  putChartSettings: (settings: ChartSettings) => Promise<void>;
   putDailyPrice: (price: DailyPriceBar) => Promise<void>;
   putExchangeRate: (rate: ExchangeRateBar) => Promise<void>;
   putHolding: (holding: PortfolioHolding) => Promise<void>;
@@ -109,6 +113,7 @@ export function createStockPrepDbRepository(db: IDBDatabase): StockPrepDbReposit
     close: () => db.close(),
     deleteWatchlistSymbol: (symbolId) => deleteByKey(db, stockPrepStores.watchlist, symbolId),
     getCashBalance: (currency) => getByKey<CashBalance>(db, stockPrepStores.cash, currency),
+    getChartSettings: (id) => getByKey<ChartSettings>(db, stockPrepStores.chartSettings, id),
     getDailyPrice: (id) => getByKey<DailyPriceBar>(db, stockPrepStores.dailyPrices, id),
     getExchangeRate: (id) => getByKey<ExchangeRateBar>(db, stockPrepStores.exchangeRates, id),
     getHolding: (id) => getByKey<PortfolioHolding>(db, stockPrepStores.holdings, id),
@@ -129,6 +134,7 @@ export function createStockPrepDbRepository(db: IDBDatabase): StockPrepDbReposit
     listWatchlistSymbols: () => getAll<WatchlistSymbolRecord>(db, stockPrepStores.watchlist),
     putSyncState: (syncState) => putValue(db, stockPrepStores.syncState, syncState),
     putCashBalance: (cashBalance) => putValue(db, stockPrepStores.cash, cashBalance),
+    putChartSettings: (settings) => putValue(db, stockPrepStores.chartSettings, settings),
     putDailyPrice: (price) => putValue(db, stockPrepStores.dailyPrices, price),
     putExchangeRate: (rate) => putValue(db, stockPrepStores.exchangeRates, rate),
     putHolding: (holding) => putValue(db, stockPrepStores.holdings, holding),
@@ -215,6 +221,10 @@ function migrateStockPrepDb(db: IDBDatabase): void {
 
   if (!db.objectStoreNames.contains(stockPrepStores.cash)) {
     db.createObjectStore(stockPrepStores.cash, { keyPath: "currency" });
+  }
+
+  if (!db.objectStoreNames.contains(stockPrepStores.chartSettings)) {
+    db.createObjectStore(stockPrepStores.chartSettings, { keyPath: "id" });
   }
 
   if (!db.objectStoreNames.contains(stockPrepStores.syncState)) {

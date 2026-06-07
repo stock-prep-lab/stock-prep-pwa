@@ -1,4 +1,5 @@
 export * from "./types/core.js";
+export * from "./types/chartSettings.js";
 export * from "./types/importJobs.js";
 export * from "./types/marketData.js";
 export * from "./types/portfolio.js";
