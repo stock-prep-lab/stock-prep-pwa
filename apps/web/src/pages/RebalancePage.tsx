@@ -101,7 +101,7 @@ export function RebalancePage() {
           <div className="flex flex-col gap-3">
             <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">次の一手を比べる</h1>
             <p className="max-w-2xl text-base leading-7 text-zinc-700">
-              保存済みの保有、現金、日足、為替から、現金を使う候補を計算します。
+              保存済みの保有、現金、最新サマリー、為替から、現金を使う候補を計算します。
             </p>
           </div>
         </div>
@@ -109,12 +109,12 @@ export function RebalancePage() {
         <div className="grid gap-3 rounded-md border border-zinc-200 bg-white p-4">
           <InfoRow label="基準通貨" value="JPY" />
           <InfoRow label="提案日" value={plan?.portfolio.asOfDate ?? "-"} />
-          <InfoRow label="評価方式" value="IndexedDB 保存データ" />
+          <InfoRow label="評価方式" value="最新サマリー + 保有データ" />
         </div>
       </div>
 
       {rebalanceState.status === "loading" ? (
-        <StatusPanel message="保存済みデータから提案を計算しています。" />
+        <StatusPanel message="保存済みの保有と最新サマリーから提案を計算しています。" />
       ) : rebalanceState.status === "error" ? (
         <StatusPanel message={rebalanceState.error} tone="error" />
       ) : rebalanceState.result.symbolCount === 0 || rebalanceState.result.dailyPriceCount === 0 ? (

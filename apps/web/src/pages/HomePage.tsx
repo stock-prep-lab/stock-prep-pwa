@@ -4,128 +4,68 @@ import { Link } from "react-router-dom";
 import { PaginationControls } from "../components/PaginationControls";
 import { UserSymbolBadges } from "../components/UserSymbolBadges";
 import { WatchToggleButton } from "../components/WatchToggleButton";
-import { buildStockDetailHref } from "../data/stockDetailHref";
 import { subscribeToStockPrepDataChanged } from "../data/dataSyncEvents";
 import {
-  addWatchSymbol,
-  loadUserSymbolsSnapshotFromIndexedDb,
-  removeWatchSymbol,
-  type UserSymbolListItem,
-} from "../data/userSymbolsData";
+  loadHomePageData,
+  type HomeCandidate,
+  type HomeLatestSymbolItem,
+  type HomePageData,
+  type HomePortfolioSummary,
+  type HomeRebalanceAlert,
+} from "../data/homePageData";
+import { buildStockDetailHref } from "../data/stockDetailHref";
+import { addWatchSymbol, removeWatchSymbol } from "../data/userSymbolsData";
 import { subscribeToUserSymbolsChanged } from "../data/userSymbolsEvents";
 
-type UpdateSummary = {
-  marketDate: string;
-  importedAt: string;
-  status: string;
-  symbolCount: number;
-  priceCount: number;
-};
+type HomePageState =
+  | { status: "loading" }
+  | { data: HomePageData; status: "ready" }
+  | { message: string; status: "error" };
 
-type Candidate = {
-  rank: number;
-  code: string;
-  name: string;
-  region: "JP";
-  signal: string;
-  score: number;
-  changeRate: string;
-};
-
-type PortfolioSummary = {
-  totalValue: string;
-  cashRatio: string;
-  stockRatio: string;
-  topHolding: string;
-};
-
-type RebalanceAlert = {
-  title: string;
-  description: string;
-  severity: "注意" | "確認";
-};
-
-const updateSummary: UpdateSummary = {
-  marketDate: "2026年4月17日",
-  importedAt: "15:35",
-  status: "日次データ更新済み",
-  symbolCount: 3821,
-  priceCount: 3821,
-};
-
-const candidates: Candidate[] = [
-  {
-    rank: 1,
-    code: "7203",
-    name: "トヨタ自動車",
-    region: "JP",
-    signal: "出来高を伴って25日線を上抜け",
-    score: 91,
-    changeRate: "+2.8%",
-  },
-  {
-    rank: 2,
-    code: "6758",
-    name: "ソニーグループ",
-    region: "JP",
-    signal: "直近高値に接近",
-    score: 87,
-    changeRate: "+1.9%",
-  },
-  {
-    rank: 3,
-    code: "8035",
-    name: "東京エレクトロン",
-    region: "JP",
-    signal: "75日線の上で反発",
-    score: 84,
-    changeRate: "+1.4%",
-  },
-];
-
-const portfolioSummary: PortfolioSummary = {
-  totalValue: "1,842,000円",
-  cashRatio: "18%",
-  stockRatio: "82%",
-  topHolding: "7203 トヨタ自動車",
-};
-
-const rebalanceAlert: RebalanceAlert = {
-  title: "電気機器の比率が高め",
-  description: "上位 2 銘柄に偏りが出ています。次の購入候補は業種分散も確認しましょう。",
-  severity: "注意",
-};
-
-const marketImageUrl =
-  "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=900&q=80";
 const userSymbolPageSize = 5;
 
 export function HomePage() {
-  const [recentSymbols, setRecentSymbols] = useState<UserSymbolListItem[]>([]);
-  const [watchlist, setWatchlist] = useState<UserSymbolListItem[]>([]);
+  const [state, setState] = useState<HomePageState>({ status: "loading" });
   const [recentPage, setRecentPage] = useState(1);
   const [watchlistPage, setWatchlistPage] = useState(1);
 
   useEffect(() => {
     let active = true;
 
-    async function load() {
-      const snapshot = await loadUserSymbolsSnapshotFromIndexedDb();
-
-      if (!active) {
-        return;
+    const load = async () => {
+      if (active) {
+        setState((current) => (current.status === "ready" ? current : { status: "loading" }));
       }
 
-      setRecentSymbols(snapshot.recentSymbols);
-      setWatchlist(snapshot.watchlist);
-    }
+      try {
+        const data = await loadHomePageData();
 
-    void load().catch(() => undefined);
+        if (!active) {
+          return;
+        }
+
+        setState({
+          data,
+          status: "ready",
+        });
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        setState({
+          message: error instanceof Error ? error.message : "ホームデータを読み込めませんでした。",
+          status: "error",
+        });
+      }
+    };
+
+    void load();
     const unsubscribeData = subscribeToStockPrepDataChanged(() => {
-      void load().catch(() => undefined);
+      void load();
     });
     const unsubscribeUserSymbols = subscribeToUserSymbolsChanged(() => {
-      void load().catch(() => undefined);
+      void load();
     });
 
     return () => {
@@ -134,6 +74,14 @@ export function HomePage() {
       unsubscribeUserSymbols();
     };
   }, []);
+
+  const data = state.status === "ready" ? state.data : null;
+  const recentSymbols = data?.recentSymbols ?? [];
+  const watchlist = data?.watchlist ?? [];
+  const recentTotalPages = getTotalPages(recentSymbols.length);
+  const watchlistTotalPages = getTotalPages(watchlist.length);
+  const visibleRecentSymbols = paginateItems(recentSymbols, recentPage);
+  const visibleWatchlist = paginateItems(watchlist, watchlistPage);
 
   useEffect(() => {
     setRecentPage((current) => clampPage(current, recentSymbols.length));
@@ -157,130 +105,111 @@ export function HomePage() {
     }
   }
 
-  const recentTotalPages = getTotalPages(recentSymbols.length);
-  const watchlistTotalPages = getTotalPages(watchlist.length);
-  const visibleRecentSymbols = paginateItems(recentSymbols, recentPage);
-  const visibleWatchlist = paginateItems(watchlist, watchlistPage);
-
   return (
     <section className="flex flex-col gap-8">
-      <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr] lg:items-stretch">
-        <div className="flex flex-col justify-between gap-6 py-2">
+      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
+        <div className="flex flex-col gap-4 py-2">
+          <p className="text-sm font-medium text-teal-700">
+            {data?.importStatusLabel ?? "ホームを準備しています"}
+          </p>
           <div className="flex flex-col gap-3">
-            <p className="text-sm font-medium text-teal-700">{updateSummary.status}</p>
             <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">ホーム</h1>
             <p className="max-w-2xl text-base leading-7 text-zinc-700">
-              引け後の数字を確認して、翌営業日の候補を絞り込みます。
+              保存済みの最新価格、保有、ウォッチ銘柄、import 状態をまとめて見て、次に確認する銘柄を決めます。
             </p>
-            <div>
+            <div className="flex flex-wrap gap-3">
               <Link
                 className="inline-flex rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 transition hover:border-teal-700 hover:text-teal-700"
                 to="/admin/imports"
               >
                 データ取り込み管理へ
               </Link>
+              <Link
+                className="inline-flex rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 transition hover:border-teal-700 hover:text-teal-700"
+                to="/portfolio"
+              >
+                保有を見る
+              </Link>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="対象日" value={updateSummary.marketDate} />
-            <MetricCard label="取込時刻" value={updateSummary.importedAt} />
-            <MetricCard label="銘柄数" value={formatCount(updateSummary.symbolCount)} />
-            <MetricCard label="価格件数" value={formatCount(updateSummary.priceCount)} />
-          </div>
+          {state.status === "ready" ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard label="対象日" value={state.data.marketDateLabel} />
+              <MetricCard label="取込反映" value={state.data.importedAtLabel} />
+              <MetricCard label="銘柄数" value={state.data.symbolCountLabel} />
+              <MetricCard label="終値反映" value={state.data.priceCountLabel} />
+            </div>
+          ) : null}
         </div>
 
-        <img
-          alt="株価チャートを確認するワークスペース"
-          className="h-56 w-full rounded-md object-cover lg:h-full"
-          src={marketImageUrl}
-        />
+        {state.status === "loading" ? (
+          <StatusPanel message="ホーム表示用データを読み込んでいます。" />
+        ) : state.status === "error" ? (
+          <StatusPanel message={state.message} tone="error" />
+        ) : (
+          <SyncSummaryCard data={state.data} />
+        )}
       </div>
 
       <section className="flex flex-col gap-4" aria-labelledby="today-candidates-heading">
         <SectionHeader
           actionLabel="候補一覧へ"
           actionTo="/screening"
-          description="モメンタムと直近の値動きから、確認優先度が高い銘柄です。"
+          description="直近で見返した銘柄やウォッチ銘柄から、今日優先して確認したいものを並べます。"
           title="今日の候補 TOP"
           titleId="today-candidates-heading"
         />
 
-        <div className="grid gap-3 lg:grid-cols-3">
-          {candidates.map((candidate) => (
-            <Link
-              className="flex min-h-44 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 transition hover:border-teal-700"
-              key={candidate.code}
-              to={buildStockDetailHref({
-                code: candidate.code,
-                region: candidate.region,
-              })}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-teal-700">No. {candidate.rank}</p>
-                  <h2 className="mt-2 text-xl font-semibold tracking-normal">{candidate.name}</h2>
-                  <p className="mt-1 text-sm text-zinc-600">{candidate.code}</p>
-                </div>
-                <span className="rounded-md bg-emerald-50 px-2 py-1 text-sm font-semibold text-emerald-700">
-                  {candidate.changeRate}
-                </span>
-              </div>
-              <div className="flex flex-col gap-2">
-                <p className="text-sm leading-6 text-zinc-700">{candidate.signal}</p>
-                <p className="text-sm font-medium text-zinc-950">Score {candidate.score}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
+        {state.status !== "ready" ? null : state.data.candidates.length === 0 ? (
+          <EmptyPanel message="最近見た銘柄かウォッチ銘柄が増えると、ここに今日の確認候補が出ます。" />
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-3">
+            {state.data.candidates.map((candidate, index) => (
+              <CandidateCard candidate={candidate} key={candidate.id} rank={index + 1} />
+            ))}
+          </div>
+        )}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <section className="flex flex-col gap-4" aria-labelledby="portfolio-summary-heading">
           <SectionHeader
-            actionLabel="保有を見る"
+            actionLabel="ポートフォリオへ"
             actionTo="/portfolio"
-            description="現金と株式のざっくりしたバランスです。"
+            description="最新価格ベースでざっくりした保有バランスを見ます。"
             title="ポートフォリオ概要"
             titleId="portfolio-summary-heading"
           />
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MetricCard label="評価額" value={portfolioSummary.totalValue} />
-            <MetricCard label="現金比率" value={portfolioSummary.cashRatio} />
-            <MetricCard label="株式比率" value={portfolioSummary.stockRatio} />
-            <MetricCard label="最大保有" value={portfolioSummary.topHolding} />
-          </div>
+          {state.status !== "ready" ? null : state.data.portfolioSummary ? (
+            <PortfolioSummaryPanel summary={state.data.portfolioSummary} />
+          ) : (
+            <EmptyPanel message="保有や現金を登録すると、ここに最新価格ベースの概要が出ます。" />
+          )}
         </section>
 
         <section className="flex flex-col gap-4" aria-labelledby="rebalance-heading">
           <SectionHeader
             actionLabel="提案を見る"
             actionTo="/rebalance"
-            description="保有比率の偏りを確認します。"
+            description="現在の構成から見た偏りを先に確認します。"
             title="リバランス注意"
             titleId="rebalance-heading"
           />
 
-          <Link
-            className="flex min-h-40 flex-col justify-between rounded-md border border-rose-200 bg-white p-4 text-zinc-950 transition hover:border-rose-500"
-            to="/rebalance"
-          >
-            <span className="w-fit rounded-md bg-rose-50 px-2 py-1 text-sm font-semibold text-rose-700">
-              {rebalanceAlert.severity}
-            </span>
-            <div className="flex flex-col gap-2">
-              <h2 className="text-xl font-semibold tracking-normal">{rebalanceAlert.title}</h2>
-              <p className="text-sm leading-6 text-zinc-700">{rebalanceAlert.description}</p>
-            </div>
-          </Link>
+          {state.status !== "ready" ? null : state.data.rebalanceAlert ? (
+            <RebalanceAlertCard alert={state.data.rebalanceAlert} />
+          ) : (
+            <EmptyPanel message="保有と最新価格が揃うと、ここに偏りの確認結果が出ます。" />
+          )}
         </section>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="flex flex-col gap-4" aria-labelledby="home-recent-heading">
           <SectionHeader
-            description="銘柄詳細を開いた順に、次に見返したい銘柄を残します。"
+            description="銘柄詳細を開いた順に、直近で見返した銘柄を残します。"
             title="最近見た銘柄"
             titleId="home-recent-heading"
           />
@@ -291,7 +220,7 @@ export function HomePage() {
             <>
               <div className="grid gap-3">
                 {visibleRecentSymbols.map((item) => (
-                  <HomeUserSymbolCard
+                  <HomeTrackedSymbolCard
                     item={item}
                     key={item.symbol.id}
                     markAsRecent
@@ -314,8 +243,8 @@ export function HomePage() {
 
         <section className="flex flex-col gap-4" aria-labelledby="watchlist-heading">
           <SectionHeader
-            description="端末間で同期するウォッチ銘柄をここで確認します。"
-            title="ウォッチ銘柄"
+            description="同期済みウォッチ銘柄の最新価格と更新日をまとめて確認します。"
+            title="ウォッチ銘柄変化"
             titleId="watchlist-heading"
           />
 
@@ -325,7 +254,7 @@ export function HomePage() {
             <>
               <div className="grid gap-3">
                 {visibleWatchlist.map((item) => (
-                  <HomeUserSymbolCard
+                  <HomeTrackedSymbolCard
                     item={item}
                     key={item.symbol.id}
                     onToggleWatch={() => {
@@ -349,37 +278,102 @@ export function HomePage() {
   );
 }
 
-function formatCount(value: number): string {
-  return `${new Intl.NumberFormat("ja-JP").format(value)}件`;
-}
-
-function paginateItems(items: UserSymbolListItem[], page: number): UserSymbolListItem[] {
-  const start = (page - 1) * userSymbolPageSize;
-  return items.slice(start, start + userSymbolPageSize);
-}
-
-function getTotalPages(totalItems: number): number {
-  return Math.max(1, Math.ceil(totalItems / userSymbolPageSize));
-}
-
-function clampPage(page: number, totalItems: number): number {
-  return Math.min(page, getTotalPages(totalItems));
-}
-
-function EmptyPanel({ message }: { message: string }) {
+function CandidateCard({
+  candidate,
+  rank,
+}: {
+  candidate: HomeCandidate;
+  rank: number;
+}) {
   return (
-    <div className="rounded-md border border-dashed border-zinc-300 bg-white p-5 text-sm leading-6 text-zinc-600">
-      {message}
+    <Link
+      className="flex min-h-44 flex-col justify-between rounded-md border border-zinc-200 bg-white p-4 text-zinc-950 transition hover:border-teal-700"
+      to={buildStockDetailHref({
+        code: candidate.code,
+        region: candidate.region,
+      })}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-teal-700">No. {rank}</p>
+          <h2 className="mt-2 text-xl font-semibold tracking-normal">{candidate.name}</h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            {candidate.code} / {candidate.region}
+          </p>
+        </div>
+        {candidate.lastCloseLabel ? (
+          <span className="rounded-md bg-emerald-50 px-2 py-1 text-sm font-semibold text-emerald-700">
+            {candidate.lastCloseLabel}
+          </span>
+        ) : (
+          <span className="rounded-md bg-zinc-100 px-2 py-1 text-sm font-medium text-zinc-600">
+            終値未取得
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        <UserSymbolBadges
+          isHeld={candidate.isHeld}
+          isWatched={candidate.isWatched}
+          wasRecentlyViewed={candidate.wasRecentlyViewed}
+        />
+        <p className="text-sm leading-6 text-zinc-700">{candidate.reason}</p>
+        <p className="text-sm text-zinc-600">
+          {candidate.lastCloseDateLabel
+            ? `終値基準日: ${candidate.lastCloseDateLabel}`
+            : "終値の基準日はまだありません。"}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+function PortfolioSummaryPanel({ summary }: { summary: HomePortfolioSummary }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <MetricCard label="評価額" value={summary.totalValueLabel} />
+      <MetricCard label="現金比率" value={summary.cashRatioLabel} />
+      <MetricCard label="株式比率" value={summary.stockRatioLabel} />
+      <MetricCard label="保有数 / 最大保有" value={`${summary.holdingCountLabel} / ${summary.topHoldingLabel}`} />
     </div>
   );
 }
 
-function HomeUserSymbolCard({
+function RebalanceAlertCard({ alert }: { alert: HomeRebalanceAlert }) {
+  return (
+    <Link
+      className="flex min-h-40 flex-col justify-between rounded-md border border-rose-200 bg-white p-4 text-zinc-950 transition hover:border-rose-500"
+      to="/rebalance"
+    >
+      <span className="w-fit rounded-md bg-rose-50 px-2 py-1 text-sm font-semibold text-rose-700">
+        {alert.severity}
+      </span>
+      <div className="flex flex-col gap-2">
+        <h2 className="text-xl font-semibold tracking-normal">{alert.title}</h2>
+        <p className="text-sm leading-6 text-zinc-700">{alert.description}</p>
+      </div>
+    </Link>
+  );
+}
+
+function SyncSummaryCard({ data }: { data: HomePageData }) {
+  return (
+    <div className="grid gap-3 rounded-md border border-zinc-200 bg-white p-4">
+      <InfoRow label="最新 dataset version" value={data.datasetVersionLabel} />
+      <InfoRow label="import 状態" value={data.importStatusLabel} />
+      <InfoRow label="job 詳細" value={data.importJobDetailLabel} />
+      <InfoRow label="端末同期" value={data.syncStateLabel} />
+      <InfoRow label="同期時刻" value={data.syncDetailLabel} />
+    </div>
+  );
+}
+
+function HomeTrackedSymbolCard({
   item,
   markAsRecent = false,
   onToggleWatch,
 }: {
-  item: UserSymbolListItem;
+  item: HomeLatestSymbolItem;
   markAsRecent?: boolean;
   onToggleWatch: () => void;
 }) {
@@ -409,10 +403,50 @@ function HomeUserSymbolCard({
           <p className="text-sm text-zinc-600">
             {item.symbol.region} / {item.symbol.currency}
           </p>
+          <p className="text-sm text-zinc-700">
+            {item.lastCloseLabel ? `終値 ${item.lastCloseLabel}` : item.latestStatusLabel}
+            {item.lastCloseDateLabel ? ` (${item.lastCloseDateLabel})` : ""}
+          </p>
         </div>
 
         <WatchToggleButton isWatched={item.isWatched} onClick={onToggleWatch} />
       </div>
+    </div>
+  );
+}
+
+function paginateItems(items: HomeLatestSymbolItem[], page: number): HomeLatestSymbolItem[] {
+  const start = (page - 1) * userSymbolPageSize;
+  return items.slice(start, start + userSymbolPageSize);
+}
+
+function getTotalPages(totalItems: number): number {
+  return Math.max(1, Math.ceil(totalItems / userSymbolPageSize));
+}
+
+function clampPage(page: number, totalItems: number): number {
+  return Math.min(page, getTotalPages(totalItems));
+}
+
+function EmptyPanel({ message }: { message: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-zinc-300 bg-white p-5 text-sm leading-6 text-zinc-600">
+      {message}
+    </div>
+  );
+}
+
+function StatusPanel({ message, tone = "info" }: { message: string; tone?: "error" | "info" }) {
+  return (
+    <div
+      className={[
+        "rounded-md border px-4 py-5 text-sm leading-7",
+        tone === "error"
+          ? "border-red-200 bg-red-50 text-red-700"
+          : "border-zinc-200 bg-white text-zinc-700",
+      ].join(" ")}
+    >
+      {message}
     </div>
   );
 }
@@ -454,7 +488,16 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-h-24 rounded-md border border-zinc-200 bg-white p-4">
       <p className="text-sm font-medium text-zinc-600">{label}</p>
-      <p className="mt-2 text-xl font-semibold tracking-normal text-zinc-950">{value}</p>
+      <p className="mt-2 text-xl font-semibold tracking-normal text-zinc-950 break-words">{value}</p>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1">
+      <p className="text-sm font-medium text-zinc-600">{label}</p>
+      <p className="text-sm leading-6 text-zinc-950 break-words">{value}</p>
     </div>
   );
 }

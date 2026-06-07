@@ -50,7 +50,7 @@ export async function fetchWithApiActivity(
   {
     activity = "foreground",
   }: {
-    activity?: "background" | "foreground";
+    activity?: "background" | "foreground" | "silent";
   } = {},
 ): Promise<Response> {
   beginApiActivity(activity);
@@ -67,7 +67,7 @@ export async function runWithApiActivity<T>(
   {
     activity = "foreground",
   }: {
-    activity?: "background" | "foreground";
+    activity?: "background" | "foreground" | "silent";
   } = {},
 ): Promise<T> {
   beginApiActivity(activity);
@@ -79,7 +79,11 @@ export async function runWithApiActivity<T>(
   }
 }
 
-function beginApiActivity(activity: "background" | "foreground"): void {
+function beginApiActivity(activity: "background" | "foreground" | "silent"): void {
+  if (activity === "silent") {
+    return;
+  }
+
   if (activity === "background") {
     backgroundInflightCount += 1;
     dispatchBackgroundApiActivityEvent();
@@ -90,7 +94,11 @@ function beginApiActivity(activity: "background" | "foreground"): void {
   dispatchForegroundApiActivityEvent();
 }
 
-function endApiActivity(activity: "background" | "foreground"): void {
+function endApiActivity(activity: "background" | "foreground" | "silent"): void {
+  if (activity === "silent") {
+    return;
+  }
+
   if (activity === "background") {
     backgroundInflightCount = Math.max(0, backgroundInflightCount - 1);
     dispatchBackgroundApiActivityEvent();

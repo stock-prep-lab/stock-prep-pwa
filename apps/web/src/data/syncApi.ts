@@ -13,7 +13,7 @@ import type {
 } from "@stock-prep/shared";
 import { fetchWithApiActivity } from "./apiActivity";
 
-type ApiActivityMode = "background" | "foreground";
+type ApiActivityMode = "background" | "foreground" | "silent";
 
 export async function fetchDatasetVersion(
   localDatasetVersion: string | null,
@@ -38,10 +38,12 @@ export async function fetchDatasetVersion(
 
 export async function fetchMarketData({
   activity = "foreground",
+  signal,
 }: {
   activity?: ApiActivityMode;
+  signal?: AbortSignal;
 } = {}): Promise<MarketDataPayload> {
-  const response = await fetchWithApiActivity("/api/market-data", undefined, { activity });
+  const response = await fetchWithApiActivity("/api/market-data", { signal }, { activity });
   return readJsonResponse<MarketDataPayload>(response);
 }
 

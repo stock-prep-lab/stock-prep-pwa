@@ -7,13 +7,9 @@ import {
 import type { DailyPriceBar, PortfolioHolding, StoredStockSymbol } from "@stock-prep/shared";
 import type { RegionCode } from "@stock-prep/shared";
 
-import {
-  createStockPrepDbRepository,
-  loadStockPrepSnapshot,
-  openStockPrepDb,
-} from "../storage/stockPrepDb";
 import { notifyStockPrepDataChanged } from "./dataSyncEvents";
 import { persistHoldingsPayload } from "./dataSyncPersistence";
+import { loadLatestSummaryMarketSnapshot } from "./latestSummarySnapshot";
 import { deleteHolding, upsertHolding } from "./syncApi";
 
 export type PortfolioLoadResult = {
@@ -41,83 +37,62 @@ export type SaveHoldingInput = {
 };
 
 export async function loadPortfolioFromIndexedDb(): Promise<PortfolioLoadResult> {
-  const db = await openStockPrepDb();
+  const snapshot = await loadLatestSummaryMarketSnapshot();
 
-  try {
-    const repository = createStockPrepDbRepository(db);
-    const snapshot = await loadStockPrepSnapshot(repository);
-
-    return {
-      dailyPriceCount: snapshot.dailyPrices.length,
-      portfolio: buildPortfolioValuation({
-        cashBalances: snapshot.cashBalances,
-        dailyPrices: snapshot.dailyPrices,
-        exchangeRates: snapshot.exchangeRates,
-        holdings: snapshot.holdings,
-        symbols: snapshot.symbols,
-      }),
-      symbolCount: snapshot.symbols.length,
-    };
-  } finally {
-    db.close();
-  }
+  return {
+    dailyPriceCount: snapshot.dailyPrices.length,
+    portfolio: buildPortfolioValuation({
+      cashBalances: snapshot.cashBalances,
+      dailyPrices: snapshot.dailyPrices,
+      exchangeRates: snapshot.exchangeRates,
+      holdings: snapshot.holdings,
+      symbols: snapshot.symbols,
+    }),
+    symbolCount: snapshot.symbols.length,
+  };
 }
 
 export async function loadRebalancePlanFromIndexedDb(): Promise<RebalanceLoadResult> {
-  const db = await openStockPrepDb();
+  const snapshot = await loadLatestSummaryMarketSnapshot();
 
-  try {
-    const repository = createStockPrepDbRepository(db);
-    const snapshot = await loadStockPrepSnapshot(repository);
-
-    return {
-      dailyPriceCount: snapshot.dailyPrices.length,
-      plan: buildRebalancePlan({
-        cashBalances: snapshot.cashBalances,
-        dailyPrices: snapshot.dailyPrices,
-        exchangeRates: snapshot.exchangeRates,
-        holdings: snapshot.holdings,
-        symbols: snapshot.symbols,
-      }),
-      symbolCount: snapshot.symbols.length,
-    };
-  } finally {
-    db.close();
-  }
+  return {
+    dailyPriceCount: snapshot.dailyPrices.length,
+    plan: buildRebalancePlan({
+      cashBalances: snapshot.cashBalances,
+      dailyPrices: snapshot.dailyPrices,
+      exchangeRates: snapshot.exchangeRates,
+      holdings: snapshot.holdings,
+      symbols: snapshot.symbols,
+    }),
+    symbolCount: snapshot.symbols.length,
+  };
 }
 
 export async function loadHoldingFormTargetFromIndexedDb(
   symbolCode: string,
   region?: RegionCode | null,
 ): Promise<HoldingFormTarget | null> {
-  const db = await openStockPrepDb();
+  const snapshot = await loadLatestSummaryMarketSnapshot();
+  const symbol =
+    (region
+      ? snapshot.symbols.find(
+          (candidate) => candidate.code === symbolCode && candidate.region === region,
+        )
+      : null) ??
+    snapshot.symbols.find((candidate) => candidate.code === symbolCode) ??
+    snapshot.symbols.find((candidate) =>
+      candidate.sourceSymbol.startsWith(symbolCode.toLowerCase()),
+    );
 
-  try {
-    const repository = createStockPrepDbRepository(db);
-    const snapshot = await loadStockPrepSnapshot(repository);
-    const symbol =
-      (region
-        ? snapshot.symbols.find(
-            (candidate) => candidate.code === symbolCode && candidate.region === region,
-          )
-        : null) ??
-      snapshot.symbols.find((candidate) => candidate.code === symbolCode) ??
-      snapshot.symbols.find((candidate) =>
-        candidate.sourceSymbol.startsWith(symbolCode.toLowerCase()),
-      );
-
-    if (!symbol) {
-      return null;
-    }
-
-    return {
-      existingHolding: snapshot.holdings.find((holding) => holding.symbolId === symbol.id) ?? null,
-      latestPrice: findLatestPrice(snapshot.dailyPrices, symbol.id),
-      symbol,
-    };
-  } finally {
-    db.close();
+  if (!symbol) {
+    return null;
   }
+
+  return {
+    existingHolding: snapshot.holdings.find((holding) => holding.symbolId === symbol.id) ?? null,
+    latestPrice: findLatestPrice(snapshot.dailyPrices, symbol.id),
+    symbol,
+  };
 }
 
 export async function saveHoldingToIndexedDb({
@@ -125,17 +100,10 @@ export async function saveHoldingToIndexedDb({
   quantity,
   symbolId,
 }: SaveHoldingInput): Promise<void> {
-  const db = await openStockPrepDb();
+  const snapshot = await loadLatestSummaryMarketSnapshot();
 
-  try {
-    const repository = createStockPrepDbRepository(db);
-    const symbol = await repository.getSymbol(symbolId);
-
-    if (!symbol) {
-      throw new Error("保存対象の銘柄が見つかりませんでした。");
-    }
-  } finally {
-    db.close();
+  if (!snapshot.symbols.some((symbol) => symbol.id === symbolId)) {
+    throw new Error("保存対象の銘柄が見つかりませんでした。");
   }
 
   const payload = await upsertHolding({

@@ -6,8 +6,14 @@ import type {
 } from "@stock-prep/shared";
 import { fetchWithApiActivity, runWithApiActivity } from "./apiActivity";
 
-export async function fetchImportJobs(): Promise<ImportJobsPayload> {
-  const response = await fetchWithApiActivity("/api/admin/import-jobs");
+type ApiActivityMode = "background" | "foreground" | "silent";
+
+export async function fetchImportJobs({
+  activity = "foreground",
+}: {
+  activity?: ApiActivityMode;
+} = {}): Promise<ImportJobsPayload> {
+  const response = await fetchWithApiActivity("/api/admin/import-jobs", undefined, { activity });
   return readJsonResponse<ImportJobsPayload>(response);
 }
 
