@@ -68,7 +68,8 @@ describe("ensureMarketDataSnapshot", () => {
     await ensureMarketDataSnapshot();
 
     expect(fetchMarketDataMock).toHaveBeenCalledWith({
-      activity: "background",
+      activity: "silent",
+      signal: expect.any(AbortSignal),
     });
     expect(persistMarketDataPayloadMock).toHaveBeenCalledWith(
       expect.objectContaining({
