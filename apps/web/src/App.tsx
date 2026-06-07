@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { APP_NAME } from "@stock-prep/shared";
 
 import { AdminImportPage } from "./pages/AdminImportPage";
+import { ChartSettingsPage } from "./pages/ChartSettingsPage";
 import { HoldingFormPage } from "./pages/HoldingFormPage";
 import { HomePage } from "./pages/HomePage";
 import { PortfolioPage } from "./pages/PortfolioPage";
@@ -80,6 +81,14 @@ const secondaryRoutes = [
     label: "データ取り込み管理",
     title: "データ取り込み管理",
     description: "市場別 ZIP を手動取り込みするための画面。",
+  },
+  {
+    id: "chart-settings",
+    path: "/settings/chart",
+    href: "/settings/chart",
+    label: "チャート設定",
+    title: "チャート設定",
+    description: "銘柄詳細チャートの初期表示とライン計算を調整するための画面。",
   },
   {
     id: "stock-detail",
@@ -172,6 +181,8 @@ function AppShell() {
                   <PortfolioPage />
                 ) : route.id === "admin-imports" ? (
                   <AdminImportPage />
+                ) : route.id === "chart-settings" ? (
+                  <ChartSettingsPage />
                 ) : route.id === "stock-detail" ? (
                   <StockDetailPage />
                 ) : route.id === "holding-form" ? (

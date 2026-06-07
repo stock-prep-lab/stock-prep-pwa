@@ -1,4 +1,6 @@
 import type {
+  ChartSettings,
+  ChartSettingsVisibility,
   DailyPriceBar,
   PortfolioHolding,
   RegionCode,
@@ -8,36 +10,20 @@ import type {
 } from "@stock-prep/shared";
 
 import { formatPriceCurrency } from "./priceFormat";
+import {
+  defaultChartSettings,
+  defaultChartSettingsVisibility,
+  toStopLossRatio,
+} from "./chartSettings";
 import { createStockPrepDbRepository, openStockPrepDb } from "../storage/stockPrepDb";
 import { fetchStockDetail } from "./syncApi";
 
-export const defaultStopLossRatio = 0.92;
+export const defaultStopLossRatio = toStopLossRatio(defaultChartSettings.stopLossPercent);
 
-export type StockDetailChartVisibility = {
-  bollinger: boolean;
-  buyPrice: boolean;
-  ichimoku: boolean;
-  macd: boolean;
-  ma25: boolean;
-  ma75: boolean;
-  recentHigh: boolean;
-  rsi: boolean;
-  stopLoss: boolean;
-  stochastic: boolean;
-};
+export type StockDetailChartVisibility = ChartSettingsVisibility;
 
-export const defaultStockDetailChartVisibility: StockDetailChartVisibility = {
-  bollinger: false,
-  buyPrice: true,
-  ichimoku: false,
-  macd: false,
-  ma25: true,
-  ma75: true,
-  recentHigh: false,
-  rsi: false,
-  stopLoss: false,
-  stochastic: false,
-};
+export const defaultStockDetailChartVisibility: StockDetailChartVisibility =
+  defaultChartSettingsVisibility;
 
 export type StockDetailMetric = {
   label: string;
@@ -165,6 +151,7 @@ export type StockDetailPageData = {
 
 export async function loadStockDetailPageData(
   request: StockDetailRequest,
+  chartSettings: ChartSettings = defaultChartSettings,
 ): Promise<StockDetailPageData | null> {
   const cachedSymbol = await loadCachedSymbol(request);
 
@@ -177,7 +164,7 @@ export async function loadStockDetailPageData(
       { activity: "background" },
     );
 
-    return buildStockDetailPageData(payload);
+    return buildStockDetailPageDataWithSettings(payload, chartSettings);
   } catch (error) {
     if (error instanceof Error && error.message.includes("404")) {
       return null;
@@ -188,6 +175,13 @@ export async function loadStockDetailPageData(
 }
 
 export function buildStockDetailPageData(payload: StockDetailPayload): StockDetailPageData {
+  return buildStockDetailPageDataWithSettings(payload, defaultChartSettings);
+}
+
+export function buildStockDetailPageDataWithSettings(
+  payload: StockDetailPayload,
+  chartSettings: ChartSettings,
+): StockDetailPageData {
   const history = sortPriceHistory(payload.priceHistory);
   const latestBar = history.at(-1) ?? null;
   const previousBar = history.at(-2) ?? null;
@@ -197,7 +191,7 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
     priceChange !== null && previousBar && previousBar.close > 0
       ? (priceChange / previousBar.close) * 100
       : null;
-  const trailingHistory = history.slice(-252);
+  const trailingHistory = history.slice(-chartSettings.recentHighLookbackTradingDays);
   const week52High = getMaxValue(trailingHistory.map((bar) => bar.high));
   const week52Low = getMinValue(trailingHistory.map((bar) => bar.low));
   const ma25Values = calculateSimpleMovingAverage(history, 25);
@@ -223,7 +217,9 @@ export function buildStockDetailPageData(payload: StockDetailPayload): StockDeta
   });
   const recentHighValue = getMaxValue(trailingHistory.map((bar) => bar.high));
   const buyPrice = payload.holding?.averagePrice ?? null;
-  const stopLossPrice = buyPrice ? roundToPriceTick(buyPrice * defaultStopLossRatio) : null;
+  const stopLossPrice = buyPrice
+    ? roundToPriceTick(buyPrice * toStopLossRatio(chartSettings.stopLossPercent))
+    : null;
   const trendContext = resolveTrendContext({
     currentClose,
     ma25Latest,

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 
 import type { RegionCode } from "@stock-prep/shared";
 
 import { StockDetailChart } from "../components/StockDetailChart";
 import { UserSymbolBadges } from "../components/UserSymbolBadges";
 import { WatchToggleButton } from "../components/WatchToggleButton";
+import { buildInitialChartVisibility, loadChartSettings } from "../data/chartSettings";
 import {
   defaultStockDetailChartVisibility,
   loadStockDetailPageData,
@@ -161,6 +162,7 @@ const trendSignalHelpMap: Record<
 };
 
 export function StockDetailPage() {
+  const location = useLocation();
   const { symbolCode } = useParams();
   const [searchParams] = useSearchParams();
   const [state, setState] = useState<StockDetailState>({ status: "loading" });
@@ -180,6 +182,9 @@ export function StockDetailPage() {
     regionParam === "JP" || regionParam === "US" || regionParam === "HK"
       ? regionParam
       : null;
+  const chartSettingsHref = `/settings/chart?returnTo=${encodeURIComponent(
+    `${location.pathname}${location.search}`,
+  )}`;
 
   async function handleToggleWatchSymbol(symbolId: string, isWatched: boolean) {
     try {
@@ -212,12 +217,16 @@ export function StockDetailPage() {
       }
 
       try {
+        const detailSettings = refreshDetail ? await loadChartSettings() : null;
         const detail =
           refreshDetail || detailRef.current === null
-            ? await loadStockDetailPageData({
-                region: region as RegionCode | null,
-                symbolCode,
-              })
+            ? await loadStockDetailPageData(
+                {
+                  region: region as RegionCode | null,
+                  symbolCode,
+                },
+                detailSettings ?? undefined,
+              )
             : detailRef.current;
 
         if (!active) {
@@ -241,11 +250,12 @@ export function StockDetailPage() {
         setSymbolFlags(nextFlags);
 
         if (refreshDetail) {
-          setChartVisibility({
-            ...defaultStockDetailChartVisibility,
-            buyPrice: detail.holding !== null,
-            stopLoss: false,
-          });
+          setChartVisibility(
+            buildInitialChartVisibility(
+              detailSettings?.visibility ?? defaultStockDetailChartVisibility,
+              detail.holding !== null,
+            ),
+          );
           setState({ detail, status: "loaded" });
         }
       } catch (error) {
@@ -300,6 +310,7 @@ export function StockDetailPage() {
       ) : (
         <LoadedStockDetail
           chartVisibility={chartVisibility}
+          chartSettingsHref={chartSettingsHref}
           detail={state.detail}
           isWatched={symbolFlags.isWatched}
           onToggleWatch={() => {
@@ -320,6 +331,7 @@ export function StockDetailPage() {
 
 function LoadedStockDetail({
   chartVisibility,
+  chartSettingsHref,
   detail,
   isWatched,
   onToggle,
@@ -327,6 +339,7 @@ function LoadedStockDetail({
   symbolFlags,
 }: {
   chartVisibility: StockDetailChartVisibility;
+  chartSettingsHref: string;
   detail: StockDetailPageData;
   isWatched: boolean;
   onToggle: (toggleId: keyof StockDetailChartVisibility) => void;
@@ -424,11 +437,19 @@ function LoadedStockDetail({
       </section>
 
       <section className="flex flex-col gap-4" aria-labelledby="chart-heading">
-        <SectionHeader
-          description="ローソク足と出来高に、トレンド系とオシレーター系の指標を重ねて確認します。"
-          title="チャート"
-          titleId="chart-heading"
-        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <SectionHeader
+            description="ローソク足と出来高に、トレンド系とオシレーター系の指標を重ねて確認します。"
+            title="チャート"
+            titleId="chart-heading"
+          />
+          <Link
+            className="inline-flex min-h-10 items-center rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-teal-700 hover:text-teal-700"
+            to={chartSettingsHref}
+          >
+            チャート設定
+          </Link>
+        </div>
 
         {detail.chartData.candlesticks.length === 0 ? (
           <StatusPanel message="この銘柄はまだ日足履歴がありません。" />
