@@ -295,10 +295,10 @@ export function ChartSettingsPage() {
                 />
               </div>
 
-              <label className="grid gap-2">
+              <label className="grid min-w-0 gap-2">
                 <span className="text-sm font-medium text-zinc-700">直近高値の対象期間</span>
                 <input
-                  className="min-h-11 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800"
+                  className="min-h-11 w-full min-w-0 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800"
                   onChange={(event) => {
                     const nextValue = Number(event.target.value);
 
@@ -317,10 +317,10 @@ export function ChartSettingsPage() {
                 />
               </label>
 
-              <label className="grid gap-2">
+              <label className="grid min-w-0 gap-2">
                 <span className="text-sm font-medium text-zinc-700">損切りラインの下げ幅 (%)</span>
                 <input
-                  className="min-h-11 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800"
+                  className="min-h-11 w-full min-w-0 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800"
                   inputMode="decimal"
                   max="50"
                   min="1"
@@ -436,10 +436,10 @@ function NumberField({
   value: number;
 }) {
   return (
-    <label className="grid gap-2">
+    <label className="grid min-w-0 gap-2">
       <span className="text-sm font-medium text-zinc-700">{label}</span>
       <input
-        className="min-h-11 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800"
+        className="min-h-11 w-full min-w-0 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800"
         inputMode="numeric"
         onChange={(event) => {
           const nextValue = Number(event.target.value);
@@ -465,10 +465,10 @@ function DecimalField({
   value: number;
 }) {
   return (
-    <label className="grid gap-2">
+    <label className="grid min-w-0 gap-2">
       <span className="text-sm font-medium text-zinc-700">{label}</span>
       <input
-        className="min-h-11 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800"
+        className="min-h-11 w-full min-w-0 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800"
         inputMode="decimal"
         onChange={(event) => {
           const nextValue = Number(event.target.value);
