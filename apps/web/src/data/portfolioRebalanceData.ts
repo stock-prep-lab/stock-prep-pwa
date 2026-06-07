@@ -14,6 +14,7 @@ import {
 } from "../storage/stockPrepDb";
 import { notifyStockPrepDataChanged } from "./dataSyncEvents";
 import { persistHoldingsPayload } from "./dataSyncPersistence";
+import { ensureMarketDataSnapshot } from "./marketDataCache";
 import { deleteHolding, upsertHolding } from "./syncApi";
 
 export type PortfolioLoadResult = {
@@ -41,6 +42,7 @@ export type SaveHoldingInput = {
 };
 
 export async function loadPortfolioFromIndexedDb(): Promise<PortfolioLoadResult> {
+  await ensureMarketDataSnapshot();
   const db = await openStockPrepDb();
 
   try {
@@ -64,6 +66,7 @@ export async function loadPortfolioFromIndexedDb(): Promise<PortfolioLoadResult>
 }
 
 export async function loadRebalancePlanFromIndexedDb(): Promise<RebalanceLoadResult> {
+  await ensureMarketDataSnapshot();
   const db = await openStockPrepDb();
 
   try {
@@ -90,6 +93,7 @@ export async function loadHoldingFormTargetFromIndexedDb(
   symbolCode: string,
   region?: RegionCode | null,
 ): Promise<HoldingFormTarget | null> {
+  await ensureMarketDataSnapshot();
   const db = await openStockPrepDb();
 
   try {

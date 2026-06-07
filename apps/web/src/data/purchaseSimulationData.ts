@@ -10,6 +10,7 @@ import {
   loadStockPrepSnapshot,
   openStockPrepDb,
 } from "../storage/stockPrepDb";
+import { ensureMarketDataSnapshot } from "./marketDataCache";
 
 export type PurchaseSimulationTarget = {
   exchangeRates: ExchangeRateBar[];
@@ -29,6 +30,7 @@ export type PurchaseSimulationLoadResult = {
 export async function loadPurchaseSimulationTargetFromIndexedDb(
   symbolCode: string | null,
 ): Promise<PurchaseSimulationLoadResult> {
+  await ensureMarketDataSnapshot();
   const db = await openStockPrepDb();
 
   try {
