@@ -6,7 +6,11 @@ import type { RegionCode } from "@stock-prep/shared";
 import { StockDetailChart } from "../components/StockDetailChart";
 import { UserSymbolBadges } from "../components/UserSymbolBadges";
 import { WatchToggleButton } from "../components/WatchToggleButton";
-import { buildInitialChartVisibility, loadChartSettings } from "../data/chartSettings";
+import {
+  buildChartSettingsLabels,
+  buildInitialChartVisibility,
+  loadChartSettings,
+} from "../data/chartSettings";
 import {
   defaultStockDetailChartVisibility,
   loadStockDetailPageData,
@@ -32,62 +36,6 @@ type StockDetailState =
   | { status: "loaded"; detail: StockDetailPageData }
   | { status: "loading" }
   | { status: "not-found" };
-
-const toggleSections: Array<{
-  items: Array<{ id: keyof StockDetailChartVisibility; label: string }>;
-  title: string;
-}> = [
-  {
-    items: [
-      { id: "ma25", label: "25MA" },
-      { id: "ma75", label: "75MA" },
-      { id: "ichimoku", label: "一目均衡表" },
-      { id: "bollinger", label: "ボリンジャー" },
-      { id: "macd", label: "MACD(12,26,9)" },
-      { id: "recentHigh", label: "直近高値ライン" },
-      { id: "buyPrice", label: "買値ライン" },
-      { id: "stopLoss", label: "損切りライン" },
-    ],
-    title: "トレンド分析",
-  },
-  {
-    items: [
-      { id: "rsi", label: "RSI(14)" },
-      { id: "stochastic", label: "ストキャスティクス" },
-    ],
-    title: "オシレーター分析",
-  },
-];
-
-const compactLegendItems: Array<{
-  colorClass: string;
-  id?: keyof StockDetailChartVisibility;
-  label: string;
-}> = [
-  { colorClass: "bg-teal-700", id: "ma25", label: "25MA" },
-  { colorClass: "bg-amber-600", id: "ma75", label: "75MA" },
-  { colorClass: "bg-blue-600", id: "ichimoku", label: "一目 転換" },
-  { colorClass: "bg-violet-600", id: "ichimoku", label: "一目 基準" },
-  { colorClass: "bg-green-600", id: "ichimoku", label: "一目 先A" },
-  { colorClass: "bg-red-600", id: "ichimoku", label: "一目 先B" },
-  { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 上" },
-  { colorClass: "bg-indigo-300", id: "bollinger", label: "BB 中" },
-  { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 下" },
-  { colorClass: "bg-fuchsia-600", id: "rsi", label: "RSI 本体" },
-  { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 70" },
-  { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 30" },
-  { colorClass: "bg-emerald-700", id: "stochastic", label: "ストキャス %K" },
-  { colorClass: "bg-amber-600", id: "stochastic", label: "ストキャス %D" },
-  { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 80" },
-  { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 20" },
-  { colorClass: "bg-blue-600", id: "macd", label: "MACD 本体" },
-  { colorClass: "bg-orange-500", id: "macd", label: "MACD Signal" },
-  { colorClass: "bg-emerald-700", id: "macd", label: "MACD Hist+" },
-  { colorClass: "bg-amber-600", id: "macd", label: "MACD Hist-" },
-  { colorClass: "bg-zinc-500", id: "recentHigh", label: "高値" },
-  { colorClass: "bg-blue-500", id: "buyPrice", label: "買値" },
-  { colorClass: "bg-red-600", id: "stopLoss", label: "損切り" },
-];
 
 const trendSignalHelpMap: Record<
   string,
@@ -160,6 +108,94 @@ const trendSignalHelpMap: Record<
     ],
   },
 };
+
+function buildToggleSections(detail: StockDetailPageData): Array<{
+  items: Array<{ id: keyof StockDetailChartVisibility; label: string }>;
+  title: string;
+}> {
+  const labels = buildChartSettingsLabels(detail.appliedChartSettings);
+
+  return [
+    {
+      items: [
+        { id: "ma25", label: labels.maShort },
+        { id: "ma75", label: labels.maLong },
+        { id: "ichimoku", label: "一目均衡表" },
+        { id: "bollinger", label: labels.bollinger },
+        { id: "macd", label: labels.macd },
+        { id: "recentHigh", label: `${labels.recentHigh}ライン` },
+        { id: "buyPrice", label: "買値ライン" },
+        { id: "stopLoss", label: "損切りライン" },
+      ],
+      title: "トレンド分析",
+    },
+    {
+      items: [
+        { id: "rsi", label: labels.rsi },
+        { id: "stochastic", label: labels.stochastic },
+      ],
+      title: "オシレーター分析",
+    },
+  ];
+}
+
+function buildCompactLegendItems(detail: StockDetailPageData): Array<{
+  colorClass: string;
+  id?: keyof StockDetailChartVisibility;
+  label: string;
+}> {
+  const labels = buildChartSettingsLabels(detail.appliedChartSettings);
+
+  return [
+    { colorClass: "bg-teal-700", id: "ma25", label: labels.maShort },
+    { colorClass: "bg-amber-600", id: "ma75", label: labels.maLong },
+    { colorClass: "bg-blue-600", id: "ichimoku", label: "一目 転換" },
+    { colorClass: "bg-violet-600", id: "ichimoku", label: "一目 基準" },
+    { colorClass: "bg-green-600", id: "ichimoku", label: "一目 先A" },
+    { colorClass: "bg-red-600", id: "ichimoku", label: "一目 先B" },
+    { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 上" },
+    { colorClass: "bg-indigo-300", id: "bollinger", label: "BB 中" },
+    { colorClass: "bg-indigo-500", id: "bollinger", label: "BB 下" },
+    { colorClass: "bg-fuchsia-600", id: "rsi", label: "RSI 本体" },
+    { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 70" },
+    { colorClass: "bg-zinc-400", id: "rsi", label: "RSI 30" },
+    { colorClass: "bg-emerald-700", id: "stochastic", label: "ストキャス %K" },
+    { colorClass: "bg-amber-600", id: "stochastic", label: "ストキャス %D" },
+    { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 80" },
+    { colorClass: "bg-zinc-400", id: "stochastic", label: "ストキャス 20" },
+    { colorClass: "bg-blue-600", id: "macd", label: "MACD 本体" },
+    { colorClass: "bg-orange-500", id: "macd", label: "MACD Signal" },
+    { colorClass: "bg-emerald-700", id: "macd", label: "MACD Hist+" },
+    { colorClass: "bg-amber-600", id: "macd", label: "MACD Hist-" },
+    { colorClass: "bg-zinc-500", id: "recentHigh", label: "高値" },
+    { colorClass: "bg-blue-500", id: "buyPrice", label: "買値" },
+    { colorClass: "bg-red-600", id: "stopLoss", label: "損切り" },
+  ];
+}
+
+function resolveTrendSignalHelp(label: string) {
+  if (label.endsWith("MA")) {
+    return trendSignalHelpMap["25MA"];
+  }
+
+  if (label.startsWith("RSI(")) {
+    return trendSignalHelpMap["RSI(14)"];
+  }
+
+  if (label.startsWith("MACD(")) {
+    return trendSignalHelpMap["MACD(12,26,9)"];
+  }
+
+  if (label.startsWith("ボリンジャー(")) {
+    return trendSignalHelpMap["ボリンジャー(20,±2σ)"];
+  }
+
+  if (label.startsWith("ストキャスティクス(")) {
+    return trendSignalHelpMap["ストキャスティクス"];
+  }
+
+  return trendSignalHelpMap[label] ?? null;
+}
 
 export function StockDetailPage() {
   const location = useLocation();
@@ -461,7 +497,7 @@ function LoadedStockDetail({
             </div>
 
             <div className="mt-4 grid gap-4 border-t border-zinc-200 pt-4">
-              {toggleSections.map((section) => (
+              {buildToggleSections(detail).map((section) => (
                 <div className="grid gap-3" key={section.title}>
                   <p className="text-sm font-medium text-zinc-600">{section.title}</p>
                   <div className="flex flex-wrap gap-3">
@@ -582,7 +618,7 @@ function LoadedStockDetail({
       </section>
 
       <TrendHelpModal
-        content={activeHelpLabel ? trendSignalHelpMap[activeHelpLabel] ?? null : null}
+        content={activeHelpLabel ? resolveTrendSignalHelp(activeHelpLabel) : null}
         label={activeHelpLabel}
         onClose={() => {
           setActiveHelpLabel(null);
@@ -630,7 +666,7 @@ function CompactChartLegend({
   detail: StockDetailPageData;
   visibility: StockDetailChartVisibility;
 }) {
-  const activeItems = compactLegendItems.filter((item) => {
+  const activeItems = buildCompactLegendItems(detail).filter((item) => {
     if (!item.id) {
       return true;
     }

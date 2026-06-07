@@ -88,8 +88,18 @@ describe("stockPrepDb", () => {
       updatedAt: "2026-04-17T15:00:00+09:00",
     };
     const chartSettings: ChartSettings = {
+      bollingerPeriod: 20,
+      bollingerStandardDeviations: 2,
       id: "chart-settings",
+      maLongPeriod: 75,
+      maShortPeriod: 25,
+      macdFastPeriod: 12,
+      macdSignalPeriod: 9,
+      macdSlowPeriod: 26,
       recentHighLookbackTradingDays: 252,
+      rsiPeriod: 14,
+      stochasticPeriod: 14,
+      stochasticSignalPeriod: 3,
       stopLossPercent: 8,
       updatedAt: "2026-04-18T09:10:00+09:00",
       visibility: {
