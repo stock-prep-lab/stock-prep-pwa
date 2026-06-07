@@ -98,13 +98,13 @@ export function PortfolioPage() {
         <div className="flex flex-col gap-3">
           <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">保有状況</h1>
           <p className="max-w-2xl text-base leading-7 text-zinc-700">
-            IndexedDB に保存した保有、現金、日足、為替から評価額と構成比を計算します。
+            保存済みの保有、現金、最新サマリー、為替から評価額と構成比を計算します。
           </p>
         </div>
       </div>
 
       {portfolioState.status === "loading" ? (
-        <StatusPanel message="保存済みポートフォリオを読み込んでいます。" />
+        <StatusPanel message="保存済みの保有と最新サマリーを読み込んでいます。" />
       ) : portfolioState.status === "error" ? (
         <StatusPanel message={portfolioState.error} tone="error" />
       ) : portfolioState.result.symbolCount === 0 || portfolioState.result.dailyPriceCount === 0 ? (

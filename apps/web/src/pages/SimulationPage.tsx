@@ -119,20 +119,20 @@ export function SimulationPage() {
               買う前に変化を見る
             </h1>
             <p className="max-w-2xl text-base leading-7 text-zinc-700">
-              購入価格と株数を入力し、保存済みの保有、現金、為替から構成比の変化を計算します。
+              購入価格と株数を入力し、保存済みの保有、現金、最新サマリー、為替から構成比の変化を計算します。
             </p>
           </div>
         </div>
 
         <div className="grid gap-3 rounded-md border border-zinc-200 bg-white p-4">
           <InfoRow label="基準通貨" value="JPY" />
-          <InfoRow label="計算方式" value="IndexedDB 保存データ" />
+          <InfoRow label="計算方式" value="最新サマリー + 保有データ" />
           <InfoRow label="対象" value={target?.symbol.code ?? symbolCode ?? "-"} />
         </div>
       </div>
 
       {simulationState.status === "loading" ? (
-        <StatusPanel message="保存済みデータからシミュレーション対象を読み込んでいます。" />
+        <StatusPanel message="保存済みの保有と最新サマリーから対象を読み込んでいます。" />
       ) : simulationState.status === "error" ? (
         <StatusPanel message={simulationState.error} tone="error" />
       ) : simulationState.result.symbolCount === 0 ||
